@@ -59,4 +59,5 @@ class DefaultFirebaseOptions {
     projectId: 'contract-manager-2026',
     storageBucket: 'contract-manager-2026.firebasestorage.app',
   );
+
 }

@@ -12,7 +12,20 @@
           "package_name": "com.caegomezda.contract_manager"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1021008762765-1crb3t57eiclshcikdr6efh38mosjf55.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.caegomezda.contract_manager",
+            "certificate_hash": "abb9b691b85aa09d6a1b7e8b7e3e0cc7bf6988a5"
+          }
+        },
+        {
+          "client_id": "1021008762765-fk70quh6ol348588spqp5glm923d37b1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCqoZcU8rBZaAgrzihkRmvvV2M65srq8N8"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1021008762765-fk70quh6ol348588spqp5glm923d37b1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

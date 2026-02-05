@@ -4,8 +4,19 @@ import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/auth/signup_screen.dart';
 import 'ui/screens/auth/verify_email_screen.dart';
 import 'ui/screens/auth/reset_password_screen.dart';
+import 'package:firebase_core/firebase_core.dart'; // 1. Importar esto
+import 'firebase_options.dart';
 
-void main() => runApp(const MyApp());
+void main() async {
+  // 3. Asegurar que los widgets estén listos antes de cargar Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 4. Inicializar Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(const MyApp());
+} 
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
