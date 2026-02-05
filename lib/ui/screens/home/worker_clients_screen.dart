@@ -1,3 +1,4 @@
+import 'package:contract_manager/ui/screens/home/add_client_screen.dart';
 import 'package:contract_manager/ui/screens/home/client_detail_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -126,6 +127,14 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
           },
           onLongPress: () => _changePriority(i),
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const AddClientScreen()));
+        }, // Aquí irá el formulario con firma
+        label: const Text("Nuevo Cliente"),
+        icon: const Icon(Icons.add),
+        backgroundColor: Colors.blueAccent,
       ),
     );
   }
