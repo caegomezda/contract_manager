@@ -48,8 +48,16 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   }
 
   Future<void> _takePhoto() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 50);
-    if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
+    final pickedFile = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      maxWidth: 600,       // Redimensiona el ancho a 600px máximo
+      maxHeight: 600,      // Redimensiona el alto a 600px máximo
+      imageQuality: 30,    // Comprime la calidad al 30%
+    );
+    
+    if (pickedFile != null) {
+      setState(() => _imageFile = File(pickedFile.path));
+    }
   }
 
   @override
