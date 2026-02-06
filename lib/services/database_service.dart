@@ -1,14 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   // --- GESTIÓN DE CLIENTES ---
 
-  /// Crea o actualiza un cliente con foto y firma
+  /// Crea o actualiza un cliente con foto (Base64) y firma
   Future<void> saveClient({
     String? id,
     required String name,
@@ -19,11 +18,11 @@ class DatabaseService {
     File? photoFile,
     required bool termsAccepted,
   }) async {
-    String? photoUrl;
+    String? photoBase64;
 
-    // 1. Si hay una foto nueva, la subimos a Firebase Storage
+    // 1. Si hay una foto nueva, la procesamos a String Base64
     if (photoFile != null) {
-      photoUrl = await _uploadPhoto(clientId, photoFile);
+      photoBase64 = await _processPhotoToBase64(photoFile);
     }
 
     // 2. Preparamos el mapa de datos
@@ -32,18 +31,19 @@ class DatabaseService {
       'client_id': clientId,
       'contract_type': contractType,
       'addresses': addresses,
-      'signature_path': signatureBase64, // Guardamos el base64 para el PDF rápido
+      'signature_path': signatureBase64, // Firma en Base64
       'terms_accepted': termsAccepted,
       'updated_at': FieldValue.serverTimestamp(),
     };
 
-    if (photoUrl != null) {
-      clientData['photo_url'] = photoUrl;
+    // Guardamos la foto como texto dentro del documento de Firestore
+    if (photoBase64 != null) {
+      clientData['photo_data_base64'] = photoBase64;
     }
 
     // 3. Guardamos en Firestore
     if (id == null) {
-      // Es un cliente nuevo: el documento tendrá el ID del cliente (cédula/NIT)
+      // Es un cliente nuevo
       await _db.collection('clients').doc(clientId).set(clientData);
     } else {
       // Es una actualización/renovación
@@ -51,16 +51,21 @@ class DatabaseService {
     }
   }
 
-  /// Sube la foto del local a Storage y retorna la URL
-  Future<String> _uploadPhoto(String clientId, File file) async {
+  /// Convierte el archivo de imagen a una cadena Base64
+  /// Nota: Asegúrate de que en la UI el ImagePicker use 'imageQuality' bajo
+  Future<String?> _processPhotoToBase64(File file) async {
     try {
-      final ref = _storage.ref().child('client_photos/$clientId.jpg');
-      await ref.putFile(file);
-      return await ref.getDownloadURL();
+      final bytes = await file.readAsBytes();
+      // Verificación de seguridad: Firestore limita el documento a 1MB total
+      if (bytes.lengthInBytes > 1000000) {
+        // ignore: avoid_print
+        print("Advertencia: La imagen es demasiado grande para Firestore.");
+      }
+      return base64Encode(bytes);
     } catch (e) {
       // ignore: avoid_print
-      print("Error subiendo foto: $e");
-      return "";
+      print("Error procesando imagen a Base64: $e");
+      return null;
     }
   }
 
@@ -71,14 +76,13 @@ class DatabaseService {
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) {
               final data = doc.data();
-              data['id'] = doc.id; // Incluimos el ID de Firestore
+              data['id'] = doc.id; 
               return data;
             }).toList());
   }
 
   // --- GESTIÓN DE PLANTILLAS (ADMIN) ---
 
-  /// Guarda la plantilla del contrato creada por el Admin
   Future<void> saveContractTemplate(String title, String body) async {
     final docId = title.toLowerCase().replaceAll(' ', '_');
     await _db.collection('templates').doc(docId).set({
@@ -88,7 +92,6 @@ class DatabaseService {
     });
   }
 
-  /// Obtiene una plantilla específica
   Future<DocumentSnapshot> getTemplate(String templateId) {
     return _db.collection('templates').doc(templateId).get();
   }
