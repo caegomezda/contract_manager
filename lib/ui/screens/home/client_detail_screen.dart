@@ -1,25 +1,50 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:contract_manager/data/models/client_model.dart';
 import 'package:contract_manager/services/pdf_service.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'client_form_screen.dart'; // Asegúrate de crear este archivo
 
-class ClientDetailScreen extends StatelessWidget {
+class ClientDetailScreen extends StatefulWidget {
   final Map<String, dynamic> client;
   final bool isAdmin;
 
   const ClientDetailScreen({super.key, required this.client, this.isAdmin = false});
 
-  void _generatePDF(BuildContext context) {
+  @override
+  State<ClientDetailScreen> createState() => _ClientDetailScreenState();
+}
 
-    // Aquí idealmente traerías la plantilla guardada de la DB
+class _ClientDetailScreenState extends State<ClientDetailScreen> {
+  File? _imageFile;
+  final ImagePicker _picker = ImagePicker();
+
+  // Función para capturar foto del local/cliente
+  Future<void> _pickImage() async {
+    final XFile? pickedFile = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 50, // Comprimimos para no saturar la base de datos
+    );
+
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+      // Aquí podrías disparar la subida a Firebase Storage
+    }
+  }
+
+  void _generatePDF(BuildContext context) {
+    // Aquí traerás la plantilla real de Firestore en el siguiente paso
     String miPlantillaHardcoded = "Yo {{nombre}}, con ID {{id}}, acepto el contrato...";
-      
-    PdfService.generateFinalContract(client, miPlantillaHardcoded);
+    PdfService.generateFinalContract(widget.client, miPlantillaHardcoded);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.green,
         content: Text("Generando documento PDF con firma digital..."),
       ),
     );
@@ -40,133 +65,51 @@ class ClientDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Cabecera de Estado
+            // 1. Cabecera de Estado (FIJO VERDE según requerimiento)
             _buildStatusHeader(),
+            const SizedBox(height: 20),
+
+            // 2. Botón de Actualizar / Renovar
+            _buildUpdateBtn(),
             const SizedBox(height: 25),
-            
+
             const Text("INFORMACIÓN DEL CLIENTE", 
               style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
             const Divider(),
-            _infoRow(Icons.business, "Nombre", client['name'] ?? client['client_name']),
-            _infoRow(Icons.description, "Tipo de Contrato", client['contract'] ?? client['contract_type'] ?? client['type']),
-            _infoRow(Icons.calendar_today, "Fecha de Registro", client['date']?.toString().split('T')[0] ?? "04/02/2026"),
             
-            // ==========================================================
-            // NUEVA SECCIÓN: LISTADO DE DIRECCIONES DESPLEGABLE
-            // ==========================================================
-            if (client['addresses'] != null && (client['addresses'] as List).isNotEmpty) ...[
+            _infoRow(Icons.business, "Nombre", widget.client['name'] ?? widget.client['client_name'] ?? 'N/A'),
+            _infoRow(Icons.description, "Tipo de Contrato", widget.client['contract'] ?? widget.client['contract_type'] ?? 'Servicio Estándar'),
+            _infoRow(Icons.calendar_today, "Última Actualización", widget.client['date']?.toString().split('T')[0] ?? "06/02/2026"),
+            
+            // Sección de Direcciones
+            if (widget.client['addresses'] != null) ...[
               const SizedBox(height: 10),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: ExpansionTile(
-                  shape: const RoundedRectangleBorder(side: BorderSide.none),
-                  leading: const Icon(Icons.location_on, color: Colors.blueAccent),
-                  title: const Text("Direcciones Registradas", 
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text("${(client['addresses'] as List).length} sedes encontradas"),
-                  children: (client['addresses'] as List).map((dir) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.circle, size: 8, color: Colors.blueGrey),
-                    title: Text(dir.toString(), style: const TextStyle(fontSize: 14)),
-                  )).toList(),
-                ),
-              ),
+              _buildAddressesSection(),
             ],
-            // ==========================================================
 
             const SizedBox(height: 30),
-            const Text("FIRMA REGISTRADA", 
+            const Text("EVIDENCIA Y SEGURIDAD", 
               style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
             const Divider(),
-            const SizedBox(height: 15),
             
-            // 2. Contenedor de Firma con Icono PDF Flotante
-            Stack(
-              children: [
-                Container(
-                  width: double.infinity,
-                  height: 220,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: client['signature_path'] != null && client['signature_path'].isNotEmpty
-                        ? Image.memory(
-                            base64Decode(client['signature_path']),
-                            fit: BoxFit.contain,
-                          )
-                        : const Center(
-                            child: Text("Firma Digital Protegida", 
-                              style: TextStyle(color: Colors.grey))),
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        )
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 32),
-                      onPressed: () => _generatePDF(context),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            // 3. SECCIÓN DE FOTO DEL LOCAL
+            const SizedBox(height: 15),
+            _buildPhotoSection(),
+            
+            const SizedBox(height: 25),
+            const Text("FIRMA DEL CONTRATO", 
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 10),
+
+            // 4. Contenedor de Firma con Icono PDF
+            _buildSignatureCanvas(),
             
             const SizedBox(height: 30),
 
-            // 3. Botón Principal de PDF
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                onPressed: () => _generatePDF(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
-                ),
-                icon: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
-                label: const Text("DESCARGAR CONTRATO PDF", 
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-            ),
+            // 5. Botón de Descarga
+            _buildDownloadButton(),
 
-            const SizedBox(height: 15),
-
-            // 4. Opción para Admin
-            if (isAdmin)
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  onPressed: () { /* Lógica de prioridad */ },
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.blueAccent),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.edit, size: 20),
-                  label: const Text("MODIFICAR PRIORIDAD"),
-                ),
-              ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
@@ -174,7 +117,8 @@ class ClientDetailScreen extends StatelessWidget {
   }
 
   Widget _buildStatusHeader() {
-    final Color statusColor = client['color'] ?? Colors.blueAccent;
+    // Ahora es fijo Verde como solicitaste
+    const Color statusColor = Colors.green;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -184,41 +128,164 @@ class ClientDetailScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.verified_user_rounded, color: statusColor),
+          const Icon(Icons.verified_user_rounded, color: statusColor),
           const SizedBox(width: 12),
           Text(
-            "ESTADO: ${client['status'] ?? client['priority'] ?? 'Activo'}",
-            style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
+            "ACTIVO",
+            style: TextStyle(color: statusColor.withOpacity(0.8), fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildUpdateBtn() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () {
+
+          final clientModel = ClientModel(
+            id: widget.client['id'],
+            name: widget.client['name'] ?? '',
+            clientId: widget.client['client_id'] ?? '',
+            contractType: widget.client['contract_type'] ?? '',
+            addresses: List<String>.from(widget.client['addresses'] ?? []),
+            photoUrl: widget.client['photo_url'],
+            signatureBase64: widget.client['signature_path'],
+            termsAccepted: widget.client['terms_accepted'] ?? false,
+            lastUpdate: DateTime.now(),
+          );
+          // Navegamos al formulario pasando los datos actuales para renovar
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ClientFormScreen(existingClient: clientModel),
+            ),
+          );
+        },
+        icon: const Icon(Icons.history_edu, color: Colors.white),
+        label: const Text("ACTUALIZAR / RENOVAR CONTRATO", style: TextStyle(color: Colors.white)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.orange[700],
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Foto del Local / Fachada", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _pickImage,
+          child: Container(
+            height: 180,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.grey[300]!, width: 2, style: BorderStyle.solid),
+            ),
+            child: _imageFile == null 
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.camera_enhance_outlined, size: 40, color: Colors.grey[400]),
+                    const SizedBox(height: 8),
+                    Text("Tocar para tomar foto", style: TextStyle(color: Colors.grey[600])),
+                  ],
+                )
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Image.file(_imageFile!, fit: BoxFit.cover),
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSignatureCanvas() {
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          height: 200,
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.grey[200]!),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: widget.client['signature_path'] != null && widget.client['signature_path'].isNotEmpty
+                ? Image.memory(base64Decode(widget.client['signature_path']), fit: BoxFit.contain)
+                : const Center(child: Text("Sin firma registrada", style: TextStyle(color: Colors.grey))),
+          ),
+        ),
+        Positioned(
+          top: 10,
+          right: 10,
+          child: CircleAvatar(
+            backgroundColor: Colors.white,
+            child: IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              onPressed: () => _generatePDF(context),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDownloadButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton.icon(
+        onPressed: () => _generatePDF(context),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blueAccent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.download_rounded, color: Colors.white),
+        label: const Text("DESCARGAR PDF FIRMADO", 
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  Widget _buildAddressesSection() {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      leading: const Icon(Icons.location_on, color: Colors.blueAccent),
+      title: const Text("Direcciones Registradas", style: TextStyle(fontWeight: FontWeight.bold)),
+      children: (widget.client['addresses'] as List).map((dir) => ListTile(
+        dense: true,
+        title: Text(dir.toString()),
+        leading: const Icon(Icons.circle, size: 6),
+      )).toList(),
+    );
+  }
+
   Widget _infoRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.blueAccent.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 20, color: Colors.blueAccent),
-          ),
+          Icon(icon, size: 20, color: Colors.blueGrey),
           const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                Text(value, 
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            ],
           ),
         ],
       ),
