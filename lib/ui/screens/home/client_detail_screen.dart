@@ -19,23 +19,23 @@ class ClientDetailScreen extends StatefulWidget {
 }
 
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
-  File? _imageFile;
-  final ImagePicker _picker = ImagePicker();
+  // File? _imageFile;
+  // final ImagePicker _picker = ImagePicker();
 
   // Función para capturar foto del local/cliente
-  Future<void> _pickImage() async {
-    final XFile? pickedFile = await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 50, // Comprimimos para no saturar la base de datos
-    );
+  // Future<void> _pickImage() async {
+  //   final XFile? pickedFile = await _picker.pickImage(
+  //     source: ImageSource.camera,
+  //     imageQuality: 50, // Comprimimos para no saturar la base de datos
+  //   );
 
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-      // Aquí podrías disparar la subida a Firebase Storage
-    }
-  }
+  //   if (pickedFile != null) {
+  //     setState(() {
+  //       _imageFile = File(pickedFile.path);
+  //     });
+  //     // Aquí podrías disparar la subida a Firebase Storage
+  //   }
+  // }
 
   void _generatePDF(BuildContext context) {
     // Aquí traerás la plantilla real de Firestore en el siguiente paso
@@ -94,6 +94,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             
             // 3. SECCIÓN DE FOTO DEL LOCAL
             const SizedBox(height: 15),
+            // _buildPhotoSection(),
             _buildPhotoSection(),
             
             const SizedBox(height: 25),
@@ -176,40 +177,60 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Widget _buildPhotoSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Foto del Local / Fachada", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: _pickImage,
-          child: Container(
-            height: 180,
+      // Intentamos obtener la imagen de los dos posibles nombres de campo
+      final String? photoBase64 = widget.client['photo_data_base64'] ?? widget.client['photo_url'];
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Foto del Local / Fachada", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 10),
+          Container(
+            height: 220, // Un poco más alto para que se aprecie mejor la fachada
             width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.grey[100],
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.grey[300]!, width: 2, style: BorderStyle.solid),
-            ),
-            child: _imageFile == null 
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.camera_enhance_outlined, size: 40, color: Colors.grey[400]),
-                    const SizedBox(height: 8),
-                    Text("Tocar para tomar foto", style: TextStyle(color: Colors.grey[600])),
-                  ],
+              border: Border.all(color: Colors.grey[200]!, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
                 )
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(13),
-                  child: Image.file(_imageFile!, fit: BoxFit.cover),
-                ),
+              ],
+            ),
+            child: photoBase64 != null && photoBase64.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Image.memory(
+                      base64Decode(photoBase64),
+                      fit: BoxFit.cover,
+                      // Manejo de errores por si el Base64 está corrupto
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.broken_image, color: Colors.red, size: 40),
+                            Text("Error al cargar imagen", style: TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.image_not_supported_outlined, size: 40, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text("Sin evidencia fotográfica", style: TextStyle(color: Colors.grey[600])),
+                    ],
+                  ),
           ),
-        ),
-      ],
-    );
-  }
-
+        ],
+      );
+    }
+    
   Widget _buildSignatureCanvas() {
     return Stack(
       children: [
