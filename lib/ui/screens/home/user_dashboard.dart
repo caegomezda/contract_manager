@@ -73,7 +73,7 @@ class UserDashboard extends StatelessWidget {
       },
     ];
 
-    _sortClients(clients);
+    // _sortClients(clients);
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -183,7 +183,8 @@ class UserDashboard extends StatelessWidget {
             Expanded(
               flex: 2,
               child: Container(
-                color: client['color'], // Aquí va el Rojo, Naranja o Verde
+                // color: client['color'], // Aquí va el Rojo, Naranja o Verde
+                color: Colors.green,
                 child: const Center(
                   child: Icon(
                     Icons.arrow_forward_ios,
@@ -201,17 +202,17 @@ class UserDashboard extends StatelessWidget {
 }
 
 
-  void _sortClients(List<Map<String, dynamic>> list) {
-    list.sort((a, b) {
-      // Asignamos pesos: Urgente = 0, Por vencer = 1, Al día = 2
-      Map<String, int> priorityWeight = {
-        'Urgente': 0,
-        'Por vencer': 1,
-        'Al día': 2,
-      };
-      int weightA = priorityWeight[a['priority'] ?? a['status']] ?? 3;
-      int weightB = priorityWeight[b['priority'] ?? b['status']] ?? 3;
-      return weightA.compareTo(weightB);
-    });
-  }
+  // void _sortClients(List<Map<String, dynamic>> list) {
+  //   list.sort((a, b) {
+  //     // Asignamos pesos: Urgente = 0, Por vencer = 1, Al día = 2
+  //     Map<String, int> priorityWeight = {
+  //       'Urgente': 0,
+  //       'Por vencer': 1,
+  //       'Al día': 2,
+  //     };
+  //     int weightA = priorityWeight[a['priority'] ?? a['status']] ?? 3;
+  //     int weightB = priorityWeight[b['priority'] ?? b['status']] ?? 3;
+  //     return weightA.compareTo(weightB);
+  //   });
+  // }
 }

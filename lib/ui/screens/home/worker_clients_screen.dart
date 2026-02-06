@@ -51,56 +51,56 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
   ];
 
   // Función de ordenamiento por peso de prioridad
-  void _sortClients(List<Map<String, dynamic>> list) {
-    list.sort((a, b) {
-      Map<String, int> priorityWeight = {
-        'Urgente': 0,
-        'Por vencer': 1,
-        'Al día': 2,
-      };
-      int weightA = priorityWeight[a['status']] ?? 3;
-      int weightB = priorityWeight[b['status']] ?? 3;
-      return weightA.compareTo(weightB);
-    });
-  }
+  // void _sortClients(List<Map<String, dynamic>> list) {
+  //   list.sort((a, b) {
+  //     Map<String, int> priorityWeight = {
+  //       'Urgente': 0,
+  //       'Por vencer': 1,
+  //       'Al día': 2,
+  //     };
+  //     int weightA = priorityWeight[a['status']] ?? 3;
+  //     int weightB = priorityWeight[b['status']] ?? 3;
+  //     return weightA.compareTo(weightB);
+  //   });
+  // }
 
-  void _changePriority(int index) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text("Cambiar Prioridad", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ),
-          _priorityOption(index, 'Urgente', Colors.red),
-          _priorityOption(index, 'Por vencer', Colors.orange),
-          _priorityOption(index, 'Al día', Colors.green),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
+  // void _changePriority(int index) {
+  //   showModalBottomSheet(
+  //     context: context,
+  //     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+  //     builder: (context) => Column(
+  //       mainAxisSize: MainAxisSize.min,
+  //       children: [
+  //         const Padding(
+  //           padding: EdgeInsets.all(16.0),
+  //           child: Text("Cambiar Prioridad", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+  //         ),
+  //         _priorityOption(index, 'Urgente', Colors.red),
+  //         _priorityOption(index, 'Por vencer', Colors.orange),
+  //         _priorityOption(index, 'Al día', Colors.green),
+  //         const SizedBox(height: 20),
+  //       ],
+  //     ),
+  //   );
+  // }
 
-  Widget _priorityOption(int index, String label, Color color) {
-    return ListTile(
-      leading: Icon(Icons.circle, color: color),
-      title: Text(label),
-      onTap: () {
-        setState(() {
-          _clients[index]['status'] = label;
-          _clients[index]['color'] = color;
-        });
-        Navigator.pop(context);
-      },
-    );
-  }
+  // Widget _priorityOption(int index, String label, Color color) {
+  //   return ListTile(
+  //     leading: Icon(Icons.circle, color: color),
+  //     title: Text(label),
+  //     onTap: () {
+  //       setState(() {
+  //         _clients[index]['status'] = label;
+  //         _clients[index]['color'] = color;
+  //       });
+  //       Navigator.pop(context);
+  //     },
+  //   );
+  // }
 
   @override
   Widget build(BuildContext context) {
-    _sortClients(_clients); // Ordenar antes de renderizar
+    // _sortClients(_clients); // Ordenar antes de renderizar
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -125,7 +125,7 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
               ),
             );
           },
-          onLongPress: () => _changePriority(i),
+          // onLongPress: () => _changePriority(i),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -188,7 +188,8 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
               Expanded(
                 flex: 2,
                 child: Container(
-                  color: client['color'],
+                  // color: client['color'],
+                  color: Colors.green,
                   child: const Center(
                     child: Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
                   ),
