@@ -39,6 +39,15 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // CORRECCIONES DE SINTAXIS PARA KOTLIN DSL
+            isMinifyEnabled = true     // Nota la 'is' al principio
+            isShrinkResources = true   // Nota la 'is' al principio
+            
+            // La sintaxis para archivos ProGuard en Kotlin DSL es diferente:
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

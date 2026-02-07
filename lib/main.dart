@@ -1,13 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/ui/screens/home/admin_dashboard.dart';
 import 'package:contract_manager/ui/screens/home/user_dashboard.dart';
+import 'package:contract_manager/ui/screens/splash_screen.dart'; // Importa tu nueva Splash
+import 'package:contract_manager/ui/screens/legal/disclaimer_screen.dart'; // Importa el Disclaimer
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Importante para la sesión
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Necesario para el disclaimer
 import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/auth/signup_screen.dart';
 import 'ui/screens/auth/verify_email_screen.dart';
 import 'ui/screens/auth/reset_password_screen.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -16,7 +19,6 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // --- CONFIGURACIÓN MODO OFFLINE ---
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -32,8 +34,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // Quitamos initialRoute porque 'home' manejará la lógica inicial
-      home: const AuthWrapper(), 
+      // 1. El punto de entrada ahora es la Splash Screen
+      home: const CustomSplashScreen(), 
       routes: {
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignUpScreen(),
@@ -46,7 +48,49 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- ESTE ES EL FILTRO DE SESIÓN ---
+// --- WRAPPER PARA VERIFICAR LEGAL ANTES DE ENTRAR ---
+class LegalCheckWrapper extends StatefulWidget {
+  final Widget child;
+  const LegalCheckWrapper({super.key, required this.child});
+
+  @override
+  State<LegalCheckWrapper> createState() => _LegalCheckWrapperState();
+}
+
+class _LegalCheckWrapperState extends State<LegalCheckWrapper> {
+  bool _isLoading = true;
+  bool _needsLegal = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLegalStatus();
+  }
+
+  Future<void> _checkLegalStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenLegal = prefs.getBool('seen_legal') ?? false;
+    if (mounted) {
+      setState(() {
+        _needsLegal = !hasSeenLegal;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
+    // Si no ha visto el legal, mostramos la pantalla legal
+    if (_needsLegal) return const LegalDisclaimerScreen();
+
+    // Si ya lo vio, mostramos el dashboard que correspondía
+    return widget.child;
+  }
+}
+
+// --- FILTRO DE SESIÓN ACTUALIZADO ---
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -55,21 +99,17 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // 1. Si está cargando la sesión
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // 2. Si hay un usuario logueado
         if (snapshot.hasData) {
           User user = snapshot.data!;
           
-          // Verificamos si el email está validado
           if (!user.emailVerified) {
             return const VerifyEmailScreen();
           }
 
-          // Verificamos el rol en Firestore para saber a qué Dashboard ir
           return FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
             builder: (context, roleSnapshot) {
@@ -79,16 +119,20 @@ class AuthWrapper extends StatelessWidget {
 
               if (roleSnapshot.hasData && roleSnapshot.data!.exists) {
                 String role = roleSnapshot.data!['role'] ?? 'user';
-                return role == 'admin' ? const AdminDashboard() : const UserDashboard();
+                
+                // 2. Envolvemos los Dashboards con el LegalCheckWrapper
+                Widget targetDashboard = role == 'admin' 
+                    ? const AdminDashboard() 
+                    : const UserDashboard();
+                
+                return LegalCheckWrapper(child: targetDashboard);
               }
 
-              // Si algo falla al obtener el rol, por seguridad mandamos a Login
               return const LoginScreen();
             },
           );
         }
 
-        // 3. Si no hay nadie logueado
         return const LoginScreen();
       },
     );

@@ -5,6 +5,7 @@ class ClientModel {
   String name;
   String clientId;
   String contractType;
+  String? workerId;
   List<String> addresses;
   String? photoUrl;
   String? signatureBase64;
@@ -16,6 +17,7 @@ class ClientModel {
     required this.name,
     required this.clientId,
     required this.contractType,
+    this.workerId,
     required this.addresses,
     this.photoUrl,
     this.signatureBase64,

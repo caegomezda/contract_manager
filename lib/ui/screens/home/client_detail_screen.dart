@@ -145,6 +145,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             name: widget.client['name'] ?? '',
             clientId: widget.client['client_id'] ?? '',
             contractType: widget.client['contract_type'] ?? '',
+            workerId: widget.client['worker_id'],
             addresses: List<String>.from(widget.client['addresses'] ?? []),
             photoUrl: widget.client['photo_data_base64'],
             signatureBase64: widget.client['signature_path'],
