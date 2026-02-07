@@ -1,15 +1,17 @@
 // ignore_for_file: use_build_context_synchronously
-
 import 'package:flutter/material.dart';
 import 'package:signature/signature.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import '../../../services/database_service.dart'; // Asegúrate de tener este import
+// import 'package:firebase_auth/firebase_auth.dart'; // IMPORTANTE
+import '../../../services/database_service.dart';
 import '../admin/terms_editor_screen.dart';
 
 class AddClientScreen extends StatefulWidget {
-  const AddClientScreen({super.key});
+  final String? adminAssignId;
+  final String? adminAssignName;
+  const AddClientScreen({super.key, this.adminAssignId, this.adminAssignName});
 
   @override
   State<AddClientScreen> createState() => _AddClientScreenState();
@@ -20,8 +22,8 @@ class _AddClientScreenState extends State<AddClientScreen> {
   final _idController = TextEditingController();
   final List<TextEditingController> _addressControllers = [TextEditingController()];
   
-  File? _imageFile; // Para la foto del cliente
-  bool _acceptedTerms = false; // Para los términos legales
+  File? _imageFile;
+  bool _acceptedTerms = false;
   bool _isLoading = false;
 
   final SignatureController _signatureController = SignatureController(
@@ -38,30 +40,21 @@ class _AddClientScreenState extends State<AddClientScreen> {
     _signatureController.dispose();
     _nameController.dispose();
     _idController.dispose();
-    for (var controller in _addressControllers) {
-      controller.dispose();
-    }
+    for (var controller in _addressControllers) {controller.dispose(); }
     super.dispose();
   }
 
-  // --- LÓGICA DE FOTO ---
+  // --- LÓGICA DE MEDIA ---
   Future<void> _takePhoto() async {
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.camera,
-      maxWidth: 600,       // Redimensiona el ancho a 600px máximo
-      maxHeight: 600,      // Redimensiona el alto a 600px máximo
-      imageQuality: 30,    // Comprime la calidad al 30%
+      maxWidth: 600, maxHeight: 600, imageQuality: 30,
     );
-    
-    if (pickedFile != null) {
-      setState(() => _imageFile = File(pickedFile.path));
-    }
+    if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
 
-  void _addAddressField() {
-    setState(() => _addressControllers.add(TextEditingController()));
-  }
-
+  void _addAddressField() => setState(() => _addressControllers.add(TextEditingController()));
+  
   void _removeAddressField(int index) {
     if (_addressControllers.length > 1) {
       setState(() {
@@ -71,39 +64,29 @@ class _AddClientScreenState extends State<AddClientScreen> {
     }
   }
 
-  // --- GUARDADO FINAL ---
+  // --- GUARDADO FINAL OPTIMIZADO ---
   void _saveContract() async {
-    if (_imageFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Es obligatorio tomar una foto del local/cliente")));
-      return;
-    }
-    if (!_acceptedTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Debe aceptar los términos y condiciones")));
-      return;
-    }
-    if (_signatureController.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Por favor, el cliente debe firmar")));
-      return;
-    }
-    if (_nameController.text.trim().length < 3) {
-      // Mostrar error: Nombre demasiado corto
-      return;
-    }
-    if (_idController.text.trim().length < 5) {
-      // Mostrar error: ID de cliente inválido
-      return;
-    }
+    final name = _nameController.text.trim();
+    final clientId = _idController.text.trim();
+
+    // Validaciones rápidas
+    if (_imageFile == null) return _showMsg("Es obligatoria la foto de evidencia");
+    if (!_acceptedTerms) return _showMsg("Debe aceptar los términos");
+    if (_signatureController.isEmpty) return _showMsg("El cliente debe firmar");
+    if (name.length < 3 || clientId.length < 5) return _showMsg("Datos principales incompletos");
 
     setState(() => _isLoading = true);
 
-    final signatureBytes = await _signatureController.toPngBytes();
-    List<String> addresses = _addressControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
-
     try {
-      // Usamos el DatabaseService que creamos antes
+      final signatureBytes = await _signatureController.toPngBytes();
+      List<String> addresses = _addressControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
+
+      // LLAMADA AL SERVICIO (El servicio ya usa FirebaseAuth interno, pero aseguramos datos)
       await DatabaseService().saveClient(
-        name: _nameController.text,
-        clientId: _idController.text,
+        manualWorkerId: widget.adminAssignId,    
+        manualWorkerName: widget.adminAssignName,
+        name: _nameController.text.trim(),
+        clientId: _idController.text.trim(),
         contractType: _selectedContractType,
         addresses: addresses,
         signatureBase64: signatureBytes != null ? base64Encode(signatureBytes) : '',
@@ -112,18 +95,23 @@ class _AddClientScreenState extends State<AddClientScreen> {
       );
 
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Contrato guardado en la nube exitosamente")));
+      _showMsg("Contrato vinculado y guardado exitosamente");
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error al guardar: $e")));
+      _showMsg("Error al guardar: $e");
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showMsg(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Nuevo Contrato"), elevation: 0),
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: const Text("Nuevo Contrato"), elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : SingleChildScrollView(
@@ -131,161 +119,52 @@ class _AddClientScreenState extends State<AddClientScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. SECCIÓN DE FOTO
-                const Text("Evidencia Fotográfica", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
+                _sectionTitle("Evidencia Fotográfica"),
                 _buildPhotoBox(),
                 
                 const SizedBox(height: 25),
-                const Text("Datos Principales", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
+                _sectionTitle("Datos Principales"),
                 _buildInput("Nombre Completo / Empresa", _nameController, Icons.person),
                 const SizedBox(height: 15),
                 _buildInput("Cédula / NIT", _idController, Icons.badge),
                 
                 const SizedBox(height: 25),
-                
-                // SECCIÓN DINÁMICA DE DIRECCIONES
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Direcciones de Servicio", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    TextButton.icon(
-                      onPressed: _addAddressField,
-                      icon: const Icon(Icons.add_circle_outline),
-                      label: const Text("Agregar"),
-                    ),
-                  ],
-                ),
-                ..._addressControllers.asMap().entries.map((entry) {
-                  int idx = entry.key;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        Expanded(child: _buildInput("Dirección ${idx + 1}", entry.value, Icons.location_on)),
-                        if (_addressControllers.length > 1)
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            onPressed: () => _removeAddressField(idx),
-                          ),
-                      ],
-                    ),
-                  );
-                }),
+                _buildAddressHeader(),
+                ..._buildAddressList(),
 
                 const SizedBox(height: 20),
-                
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedContractType,
-                  decoration: InputDecoration(
-                    labelText: "Tipo de Contrato",
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  items: _contractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (val) => setState(() => _selectedContractType = val!),
-                ),
+                _buildContractDropdown(),
                 
                 const SizedBox(height: 30),
-
-                // 2. SECCIÓN DE TÉRMINOS Y CONDICIONES
                 _buildTermsSection(),
 
                 const SizedBox(height: 30),
-                const Text("Firma del Cliente", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                
+                _sectionTitle("Firma del Cliente"),
                 _buildSignaturePad(),
                 
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => _signatureController.clear(),
-                      icon: const Icon(Icons.delete_sweep, color: Colors.red),
-                      label: const Text("Limpiar Firma", style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 30),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _saveContract,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text("FINALIZAR Y FIRMAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => _signatureController.clear(),
+                    icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+                    label: const Text("Limpiar Firma", style: TextStyle(color: Colors.redAccent)),
                   ),
                 ),
+                
+                const SizedBox(height: 20),
+                _buildSubmitButton(),
               ],
             ),
           ),
     );
   }
 
-  // Widget para la caja de foto
-  Widget _buildPhotoBox() {
-    return GestureDetector(
-      onTap: _takePhoto,
-      child: Container(
-        height: 180,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _imageFile == null ? Colors.blueAccent : Colors.green, width: 2),
-        ),
-        child: _imageFile == null 
-          ? const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [Icon(Icons.camera_alt, size: 50, color: Colors.blueAccent), Text("Click para tomar foto")],
-            )
-          : ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(_imageFile!, fit: BoxFit.cover)),
-      ),
-    );
-  }
+  // --- COMPONENTES MODULARES (OPTIMIZACIÓN) ---
 
-  // Widget para los términos legales
-  Widget _buildTermsSection() {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
-      ),
-      child: CheckboxListTile(
-        value: _acceptedTerms,
-        onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
-        title: const Text("Acepto Términos y Condiciones"),
-        subtitle: GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsEditorScreen())),
-          child: const Text("Leer contrato legal", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
-        ),
-        controlAffinity: ListTileControlAffinity.leading,
-      ),
-    );
-  }
-
-  Widget _buildSignaturePad() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[400]!),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Signature(
-          controller: _signatureController,
-          height: 200,
-          backgroundColor: Colors.grey[50]!,
-        ),
-      ),
+  Widget _sectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -294,8 +173,116 @@ class _AddClientScreenState extends State<AddClientScreen> {
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        prefixIcon: Icon(icon, color: Colors.blueAccent),
+        filled: true,
+        fillColor: Colors.grey[50],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    );
+  }
+
+  Widget _buildPhotoBox() {
+    return InkWell(
+      onTap: _takePhoto,
+      child: Container(
+        height: 160,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: _imageFile == null ? Colors.blueAccent.withValues(alpha: 0.5) : Colors.green, width: 2),
+        ),
+        child: _imageFile == null 
+          ? const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [Icon(Icons.camera_alt, size: 40, color: Colors.blueAccent), Text("Tomar foto del local")],
+            )
+          : ClipRRect(borderRadius: BorderRadius.circular(13), child: Image.file(_imageFile!, fit: BoxFit.cover)),
+      ),
+    );
+  }
+
+  Widget _buildAddressHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text("Direcciones de Servicio", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        IconButton(onPressed: _addAddressField, icon: const Icon(Icons.add_circle, color: Colors.blueAccent)),
+      ],
+    );
+  }
+
+  List<Widget> _buildAddressList() {
+    return _addressControllers.asMap().entries.map((entry) {
+      int idx = entry.key;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            Expanded(child: _buildInput("Dirección ${idx + 1}", entry.value, Icons.location_on)),
+            if (_addressControllers.length > 1)
+              IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent), onPressed: () => _removeAddressField(idx)),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildContractDropdown() {
+    return DropdownButtonFormField<String>(
+      initialValue: _selectedContractType,
+      decoration: InputDecoration(
+        labelText: "Tipo de Contrato",
+        filled: true, fillColor: Colors.grey[50],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+      items: _contractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+      onChanged: (val) => setState(() => _selectedContractType = val!),
+    );
+  }
+
+  Widget _buildTermsSection() {
+    return Container(
+      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
+      child: CheckboxListTile(
+        value: _acceptedTerms,
+        onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
+        title: const Text("Acepto términos y condiciones", style: TextStyle(fontSize: 14)),
+        subtitle: InkWell(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsEditorScreen())),
+          child: const Text("Ver contrato legal", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 12)),
+        ),
+        controlAffinity: ListTileControlAffinity.leading,
+      ),
+    );
+  }
+
+  Widget _buildSignaturePad() {
+    return Container(
+      height: 180,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Signature(controller: _signatureController, backgroundColor: Colors.grey[50]!),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton(
+        onPressed: _saveContract,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blueAccent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          elevation: 0
+        ),
+        child: const Text("FINALIZAR Y GUARDAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ),
     );
   }

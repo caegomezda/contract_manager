@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 
 class WorkerClientsScreen extends StatefulWidget {
   final String workerName;
-  const WorkerClientsScreen({super.key, required this.workerName});
+  final String workerId;
+  const WorkerClientsScreen({super.key, required this.workerName, required this.workerId});
 
   @override
   State<WorkerClientsScreen> createState() => _WorkerClientsScreenState();
@@ -24,21 +25,28 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
         centerTitle: true,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // FILTRO: Solo traemos los clientes donde el nombre del trabajador coincida
+        // --- CAMBIO: Filtro por worker_id para que el Admin vea los clientes de este empleado ---
         stream: FirebaseFirestore.instance
             .collection('clients')
-            .where('worker_name', isEqualTo: widget.workerName) 
+            .where('worker_id', isEqualTo: widget.workerId)
+            .orderBy('updated_at', descending: true) 
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text("Error al cargar datos"));
+          if (snapshot.hasError) return const Center(child: Text("Error al cargar datos"));
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
           final docs = snapshot.data!.docs;
 
           if (docs.isEmpty) {
             return Center(
-              child: Text("Este trabajador aún no tiene clientes registrados.",
-                  textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  "Este trabajador aún no tiene clientes registrados'.",
+                  textAlign: TextAlign.center, 
+                  style: const TextStyle(color: Colors.grey)
+                ),
+              ),
             );
           }
 
@@ -47,8 +55,7 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final clientData = docs[i].data() as Map<String, dynamic>;
-              // Agregamos el ID del documento para que ClientDetailScreen pueda usarlo
-              clientData['id'] = docs[i].id;
+              clientData['id'] = docs[i].id; // Mantenemos el ID para detalle
 
               return _buildClientCard(
                 clientData,
@@ -56,8 +63,10 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      // Al ser Admin, puede editar o cambiar prioridades
-                      builder: (context) => ClientDetailScreen(client: clientData, isAdmin: true),
+                      builder: (context) => ClientDetailScreen(
+                        client: clientData, 
+                        isAdmin: true,
+                      ),
                     ),
                   );
                 },
@@ -68,7 +77,12 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const AddClientScreen()));
+          Navigator.push(context, MaterialPageRoute(
+            builder: (context) => AddClientScreen(
+              adminAssignId: widget.workerId,
+              adminAssignName: widget.workerName,
+            ),
+          ));
         },
         label: const Text("Asignar Nuevo"),
         icon: const Icon(Icons.add),
@@ -124,7 +138,7 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
               Expanded(
                 flex: 2,
                 child: Container(
-                  color: Colors.blueGrey[400], // Color neutral para vista de Admin
+                  color: Colors.blueGrey[400], 
                   child: const Center(
                     child: Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
                   ),

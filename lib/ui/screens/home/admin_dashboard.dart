@@ -1,7 +1,7 @@
 // ignore_for_file: deprecated_member_use
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // IMPORTANTE
 import 'package:flutter/material.dart';
 import 'worker_clients_screen.dart';
 
@@ -18,11 +18,23 @@ class AdminDashboard extends StatelessWidget {
             expandedHeight: 180.0,
             pinned: true,
             backgroundColor: Colors.white,
+            elevation: 0,
+            // --- BOTÓN DE LOGOUT INTEGRADO ---
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.logout, color: Colors.redAccent),
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                },
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 color: Colors.white,
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 50, left: 20, right: 20),
+                  padding: const EdgeInsets.only(top: 70, left: 20, right: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -33,6 +45,7 @@ class AdminDashboard extends StatelessWidget {
                         Colors.redAccent,
                         () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractDashboard()))
                       ),
+                      // Puedes agregar más botones aquí en el futuro
                     ],
                   ),
                 ),
@@ -52,6 +65,7 @@ class AdminDashboard extends StatelessWidget {
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('users').snapshots(),
             builder: (context, snapshot) {
+              if (snapshot.hasError) return SliverToBoxAdapter(child: Center(child: Text("Error: ${snapshot.error}")));
               if (!snapshot.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
               
               final workers = snapshot.data!.docs;
@@ -60,7 +74,6 @@ class AdminDashboard extends StatelessWidget {
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
                     final workerData = workers[i].data() as Map<String, dynamic>;
-                    // Aseguramos que tenga el ID para la navegación
                     workerData['id'] = workers[i].id; 
                     return _workerCard(context, workerData);
                   },
@@ -96,7 +109,6 @@ class AdminDashboard extends StatelessWidget {
   }
 
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
-    // Si no tiene el campo 'active' en Firebase, por defecto ponemos true
     bool isActive = worker['active'] ?? true;
     
     return Card(
@@ -116,11 +128,14 @@ class AdminDashboard extends StatelessWidget {
         trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
         onTap: () {
           Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => WorkerClientsScreen(workerName: worker['name'] ?? 'Desconocido'),
-            ),
-          );
+              context,
+              MaterialPageRoute(
+                builder: (context) => WorkerClientsScreen(
+                  workerName: worker['name'] ?? 'Desconocido',
+                  workerId: worker['id'],
+                ),
+              ),
+            );
         },
       ),
     );

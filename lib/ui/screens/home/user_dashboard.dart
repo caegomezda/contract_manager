@@ -1,6 +1,7 @@
 import 'package:contract_manager/ui/screens/home/add_client_screen.dart';
 import 'package:contract_manager/ui/screens/home/client_detail_screen.dart';
-import 'package:contract_manager/services/database_service.dart'; // Importa tu servicio
+import 'package:contract_manager/services/database_service.dart';
+import 'package:firebase_auth/firebase_auth.dart'; 
 import 'package:flutter/material.dart';
 
 class UserDashboard extends StatelessWidget {
@@ -12,10 +13,11 @@ class UserDashboard extends StatelessWidget {
       backgroundColor: Colors.grey[50],
       body: Column(
         children: [
-          _buildHeader(),
+          _buildHeader(context), // Mantenemos tu header
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: DatabaseService().getClientsStream(), // STREAM REAL
+              // Ahora el servicio filtrará automáticamente por el UID del usuario logueado
+              stream: DatabaseService().getClientsStream(), 
               builder: (context, snapshot) {
                 if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -57,31 +59,46 @@ class UserDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 20),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
+          const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text("Mis Contratos", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               Text("Sincronización en tiempo real", style: TextStyle(color: Colors.grey)),
             ],
           ),
-          CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.person, color: Colors.white)),
+          // --- AGREGADO: Botón Logout junto al Avatar ---
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.logout, color: Colors.grey),
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                },
+              ),
+              const CircleAvatar(
+                backgroundColor: Colors.blueAccent, 
+                child: Icon(Icons.person, color: Colors.white)
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildClientCard(Map<String, dynamic> client, {VoidCallback? onTap}) {
-    // Verificamos si el cliente está pendiente de subir a la nube (Modo Offline)
     bool isSyncing = client['is_local'] ?? false;
 
     return GestureDetector(
@@ -94,7 +111,7 @@ class UserDashboard extends StatelessWidget {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
+              color: Colors.black.withValues(alpha: 0.5), // Opacidad corregida para evitar errores
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -130,7 +147,6 @@ class UserDashboard extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: Container(
-                  // Verde si está en la nube, Naranja si está solo en el móvil
                   color: isSyncing ? Colors.orange : Colors.green,
                   child: Center(
                     child: Icon(
