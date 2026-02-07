@@ -70,17 +70,21 @@ class DatabaseService {
   }
 
   /// Escuchar la lista de clientes en tiempo real
+/// Escuchar la lista de clientes con soporte para metadatos offline
   Stream<List<Map<String, dynamic>>> getClientsStream() {
+    // includeMetadataChanges: true permite que la UI se actualice 
+    // cuando el estado cambia de "local" a "sincronizado"
     return _db.collection('clients')
         .orderBy('updated_at', descending: true)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true) 
         .map((snapshot) => snapshot.docs.map((doc) {
               final data = doc.data();
               data['id'] = doc.id; 
+              // Agregamos esta bandera para usarla en la UI
+              data['is_local'] = doc.metadata.hasPendingWrites; 
               return data;
             }).toList());
   }
-
   // --- GESTIÓN DE PLANTILLAS (ADMIN) ---
 
   Future<void> saveContractTemplate(String title, String body) async {
@@ -92,7 +96,19 @@ class DatabaseService {
     });
   }
 
+/// Obtener todas las plantillas disponibles para el Administrador
+  Stream<List<Map<String, dynamic>>> getTemplatesStream() {
+    return _db.collection('templates')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              data['id'] = doc.id;
+              return data;
+            }).toList());
+  }
+
   Future<DocumentSnapshot> getTemplate(String templateId) {
     return _db.collection('templates').doc(templateId).get();
   }
 }
+
