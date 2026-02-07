@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 // import 'package:firebase_core/firebase_core.dart'; // Asegúrate de tener firebase_core en pubspec
 import 'ui/screens/auth/login_screen.dart';
@@ -8,13 +9,18 @@ import 'package:firebase_core/firebase_core.dart'; // 1. Importar esto
 import 'firebase_options.dart';
 
 void main() async {
-  // 3. Asegurar que los widgets estén listos antes de cargar Firebase
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // 4. Inicializar Firebase
+WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // --- CONFIGURACIÓN MODO OFFLINE ---
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true, // Habilita el guardado en disco local
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED, // O un límite (ej. 100 * 1024 * 1024 para 100MB)
+  );
+
+  runApp(const MyApp());
   runApp(const MyApp());
 } 
 
