@@ -85,6 +85,14 @@ class _AddClientScreenState extends State<AddClientScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Por favor, el cliente debe firmar")));
       return;
     }
+    if (_nameController.text.trim().length < 3) {
+      // Mostrar error: Nombre demasiado corto
+      return;
+    }
+    if (_idController.text.trim().length < 5) {
+      // Mostrar error: ID de cliente inválido
+      return;
+    }
 
     setState(() => _isLoading = true);
 
