@@ -25,14 +25,36 @@ class _TermsEditorScreenState extends State<TermsEditorScreen> {
   }
 
   void _save() async {
-    if (_titleController.text.isEmpty || _bodyController.text.isEmpty) return;
+    if (_titleController.text.isEmpty || _bodyController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Por favor rellena todos los campos")),
+      );
+      return;
+    }
     
-    await DatabaseService().saveContractTemplate(
-      _titleController.text, 
-      _bodyController.text
-    );
-    
-    if (mounted) Navigator.pop(context);
+    try {
+      // Llamada al servicio que ya definimos en DatabaseService
+      await DatabaseService().saveContractTemplate(
+        _titleController.text.trim(), 
+        _bodyController.text.trim()
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.green,
+            content: Text("Plantilla actualizada correctamente en la nube"),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error al guardar: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   @override
