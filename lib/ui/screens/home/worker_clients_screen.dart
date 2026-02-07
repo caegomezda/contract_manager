@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/ui/screens/home/add_client_screen.dart';
 import 'package:contract_manager/ui/screens/home/client_detail_screen.dart';
 import 'package:flutter/material.dart';
@@ -11,97 +12,8 @@ class WorkerClientsScreen extends StatefulWidget {
 }
 
 class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
-  // Datos unificados para evitar errores de ordenamiento
-  final List<Map<String, dynamic>> _clients = [
-    {
-      'name': 'Panadería Central', 
-      'contract': 'Mantenimiento', 
-      'status': 'Al día', 
-      'color': Colors.green,
-      'addresses': ['Calle 10 #4-20'],
-      'date': '01/02/2026'
-    },
-    {
-      'name': 'Hotel Plaza', 
-      'contract': 'Servicios Seg.', 
-      'status': 'Por vencer', 
-      'color': Colors.orange,
-      'addresses': ['Av. El Sol #45'],
-      'date': '02/02/2026'
-    },
-    {
-      'name': 'Restaurante El Faro',
-      'contract': 'Mantenimiento',
-      'status': 'Urgente',
-      'color': Colors.red,
-      'date': '04/02/2026',
-      'addresses': [
-        'Av. Principal #12-45, Centro',
-        'Calle 50 #8-20, Zona Norte',
-      ],
-    },
-    {
-      'name': 'Supermercados Global',
-      'contract': 'Limpieza Prof.',
-      'status': 'Por vencer',
-      'color': Colors.orange,
-      'date': '03/02/2026',
-      'addresses': ['Punto de Venta Sur', 'Punto de Venta Norte'],
-    },
-  ];
-
-  // Función de ordenamiento por peso de prioridad
-  // void _sortClients(List<Map<String, dynamic>> list) {
-  //   list.sort((a, b) {
-  //     Map<String, int> priorityWeight = {
-  //       'Urgente': 0,
-  //       'Por vencer': 1,
-  //       'Al día': 2,
-  //     };
-  //     int weightA = priorityWeight[a['status']] ?? 3;
-  //     int weightB = priorityWeight[b['status']] ?? 3;
-  //     return weightA.compareTo(weightB);
-  //   });
-  // }
-
-  // void _changePriority(int index) {
-  //   showModalBottomSheet(
-  //     context: context,
-  //     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-  //     builder: (context) => Column(
-  //       mainAxisSize: MainAxisSize.min,
-  //       children: [
-  //         const Padding(
-  //           padding: EdgeInsets.all(16.0),
-  //           child: Text("Cambiar Prioridad", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-  //         ),
-  //         _priorityOption(index, 'Urgente', Colors.red),
-  //         _priorityOption(index, 'Por vencer', Colors.orange),
-  //         _priorityOption(index, 'Al día', Colors.green),
-  //         const SizedBox(height: 20),
-  //       ],
-  //     ),
-  //   );
-  // }
-
-  // Widget _priorityOption(int index, String label, Color color) {
-  //   return ListTile(
-  //     leading: Icon(Icons.circle, color: color),
-  //     title: Text(label),
-  //     onTap: () {
-  //       setState(() {
-  //         _clients[index]['status'] = label;
-  //         _clients[index]['color'] = color;
-  //       });
-  //       Navigator.pop(context);
-  //     },
-  //   );
-  // }
-
   @override
   Widget build(BuildContext context) {
-    // _sortClients(_clients); // Ordenar antes de renderizar
-
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -111,38 +23,63 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _clients.length,
-        itemBuilder: (context, i) => _buildClientCard(
-          _clients[i],
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                // isAdmin: true permite que el jefe modifique la prioridad desde el detalle
-                builder: (context) => ClientDetailScreen(client: _clients[i], isAdmin: true),
-              ),
+      body: StreamBuilder<QuerySnapshot>(
+        // FILTRO: Solo traemos los clientes donde el nombre del trabajador coincida
+        stream: FirebaseFirestore.instance
+            .collection('clients')
+            .where('worker_name', isEqualTo: widget.workerName) 
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return Center(child: Text("Error al cargar datos"));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+          final docs = snapshot.data!.docs;
+
+          if (docs.isEmpty) {
+            return Center(
+              child: Text("Este trabajador aún no tiene clientes registrados.",
+                  textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
             );
-          },
-          // onLongPress: () => _changePriority(i),
-        ),
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final clientData = docs[i].data() as Map<String, dynamic>;
+              // Agregamos el ID del documento para que ClientDetailScreen pueda usarlo
+              clientData['id'] = docs[i].id;
+
+              return _buildClientCard(
+                clientData,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      // Al ser Admin, puede editar o cambiar prioridades
+                      builder: (context) => ClientDetailScreen(client: clientData, isAdmin: true),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(context, MaterialPageRoute(builder: (context) => const AddClientScreen()));
-        }, // Aquí irá el formulario con firma
-        label: const Text("Nuevo Cliente"),
+        },
+        label: const Text("Asignar Nuevo"),
         icon: const Icon(Icons.add),
         backgroundColor: Colors.blueAccent,
       ),
     );
   }
 
-  Widget _buildClientCard(Map<String, dynamic> client, {VoidCallback? onTap, VoidCallback? onLongPress}) {
+  Widget _buildClientCard(Map<String, dynamic> client, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onLongPress,
       child: Container(
         height: 100,
         margin: const EdgeInsets.only(bottom: 16),
@@ -151,8 +88,7 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              // ignore: deprecated_member_use
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.5),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -171,14 +107,14 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        client['name'],
+                        client['name'] ?? 'Cliente sin nombre',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Contrato: ${client['contract'] ?? 'Sin especificar'}",
+                        "Contrato: ${client['contract_type'] ?? 'No especificado'}",
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
                       ),
                     ],
@@ -188,8 +124,7 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
               Expanded(
                 flex: 2,
                 child: Container(
-                  // color: client['color'],
-                  color: Colors.green,
+                  color: Colors.blueGrey[400], // Color neutral para vista de Admin
                   child: const Center(
                     child: Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
                   ),

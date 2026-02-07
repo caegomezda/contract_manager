@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:contract_manager/ui/screens/home/admin_dashboard.dart';
+import 'package:contract_manager/ui/screens/home/user_dashboard.dart';
 import 'package:flutter/material.dart';
 // import 'package:firebase_core/firebase_core.dart'; // Asegúrate de tener firebase_core en pubspec
 import 'ui/screens/auth/login_screen.dart';
@@ -37,6 +39,8 @@ class MyApp extends StatelessWidget {
         '/signup': (context) => const SignUpScreen(),
         '/verify': (context) => const VerifyEmailScreen(),
         '/reset': (context) => const ResetPasswordScreen(),
+        '/admin_dashboard': (context) => const AdminDashboard(), // <--- ¿Se llama así?
+        '/user_dashboard': (context) => const UserDashboard(),
       },
     );
   }

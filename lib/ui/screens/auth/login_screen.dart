@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../home/home_screen.dart';
+import 'verify_email_screen.dart'; // Asegúrate de importar tu pantalla de verificación
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,16 +11,77 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // 1. Agregamos controladores para capturar el texto
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    // 2. Importante: Limpiar controladores al cerrar la pantalla
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Ingresa tus credenciales")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Autenticación en Firebase
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      User? user = userCredential.user;
+
+      // 2. ¿El correo está verificado?
+      if (user != null && !user.emailVerified) {
+        setState(() => _isLoading = false);
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const VerifyEmailScreen()),
+        );
+        return;
+      }
+
+      // 3. Si está verificado, buscamos el rol en Firestore
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        String role = userDoc['role'] ?? 'user';
+        if (!mounted) return;
+
+        // Redirección según rol
+        if (role == 'admin') {
+          Navigator.pushReplacementNamed(context, '/admin_dashboard');
+        } else {
+          Navigator.pushReplacementNamed(context, '/user_dashboard');
+        }
+      } else {
+        throw "No se encontró el perfil de usuario.";
+      }
+    } on FirebaseAuthException catch (e) {
+      String error = "Error al ingresar. Revisa tus datos.";
+      if (e.code == 'user-not-found') error = "Usuario no registrado.";
+      if (e.code == 'wrong-password') error = "Contraseña incorrecta.";
+      
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -36,7 +99,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const Text("ContractFlow", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
               const SizedBox(height: 40),
               
-              // 3. Pasamos los controladores a los campos
               _buildTextField("Correo Electrónico", Icons.email_outlined, controller: _emailController),
               const SizedBox(height: 15),
               _buildTextField("Contraseña", Icons.lock_outline, obscure: true, controller: _passwordController),
@@ -53,34 +115,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Aquí llamarías a: AuthService().signIn(_emailController.text, _passwordController.text);
-                    debugPrint("Intentando entrar con: ${_emailController.text}");
-                  },
+                  onPressed: _isLoading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueAccent, 
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                   ),
-                  child: const Text("INGRESAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: _isLoading 
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("INGRESAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
               
-              // 4. Botón para ir a Registro
               TextButton(
                 onPressed: () => Navigator.pushNamed(context, '/signup'), 
                 child: const Text("¿No tienes cuenta? Regístrate aquí")
               ),
-              
               const SizedBox(height: 20),
               const Divider(),
-              const Text("Probar como:", style: TextStyle(color: Colors.grey)),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  TextButton(onPressed: () => _bypass(context, 'admin'), child: const Text("ADMIN")),
-                  TextButton(onPressed: () => _bypass(context, 'user'), child: const Text("OPERADOR")),
-                ],
-              ),
             ],
           ),
         ),
@@ -88,14 +139,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _bypass(BuildContext context, String role) {
-    Navigator.pushReplacement(
-      context, 
-      MaterialPageRoute(builder: (context) => HomeScreen(mockRole: role))
-    );
-  }
-
-  // 5. Ajustamos el helper para recibir el controlador
   Widget _buildTextField(String label, IconData icon, {bool obscure = false, TextEditingController? controller}) {
     return TextField(
       controller: controller,

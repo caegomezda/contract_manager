@@ -1,3 +1,6 @@
+// ignore_for_file: use_build_context_synchronously
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class VerifyEmailScreen extends StatelessWidget {
@@ -17,17 +20,36 @@ class VerifyEmailScreen extends StatelessWidget {
             const SizedBox(height: 10),
             const Text(
               "Hemos enviado un enlace a tu correo. Por favor, haz clic en él para activar tu cuenta.",
-              textAlign: TextAlign.center, style: TextStyle(color: Colors.grey),
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 40),
             SizedBox(
-              width: double.infinity, height: 50,
+              width: double.infinity, 
+              height: 50,
               child: ElevatedButton(
-                onPressed: () => Navigator.pushReplacementNamed(context, '/'),
-                child: const Text("YA LO VERIFIQUÉ"),
+                onPressed: () {
+                  // Al presionar esto, lo mandamos al login para que entre ya verificado
+                  FirebaseAuth.instance.signOut();
+                  Navigator.pushReplacementNamed(context, '/'); 
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                child: const Text("YA LO VERIFIQUÉ, IR AL LOGIN", style: TextStyle(color: Colors.white)),
               ),
             ),
-            TextButton(onPressed: () {}, child: const Text("Reenviar código")),
+            const SizedBox(height: 20),
+            TextButton(
+              onPressed: () async {
+                User? user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  await user.sendEmailVerification();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Enlace reenviado correctamente"))
+                  );
+                }
+              }, 
+              child: const Text("Reenviar enlace de activación"),
+            ),
           ],
         ),
       ),

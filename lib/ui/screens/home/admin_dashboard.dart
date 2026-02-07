@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
 import 'package:flutter/material.dart';
 import 'worker_clients_screen.dart';
@@ -9,31 +10,22 @@ class AdminDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> workers = [
-      {'name': 'Carlos Mendoza', 'role': 'Ventas Norte', 'clients': 12, 'active': true},
-      {'name': 'Lucía Fernández', 'role': 'Ventas Sur', 'clients': 8, 'active': true},
-      {'name': 'Roberto Gómez', 'role': 'Terreno', 'clients': 5, 'active': false},
-    ];
-
     return Scaffold(
       backgroundColor: Colors.blueGrey[50],
       body: CustomScrollView(
         slivers: [
-          // AppBar estilizado
           SliverAppBar(
             expandedHeight: 180.0,
-            floating: false,
             pinned: true,
             backgroundColor: Colors.white,
             flexibleSpace: FlexibleSpaceBar(
-                background: Container(
+              background: Container(
                 color: Colors.white,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 50, left: 20, right: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      // Botón para ir a PDF y Plantillas
                       _topMenuButton(
                         context, 
                         Icons.picture_as_pdf, 
@@ -41,20 +33,6 @@ class AdminDashboard extends StatelessWidget {
                         Colors.redAccent,
                         () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractDashboard()))
                       ),
-                      // _topMenuButton(
-                      //   context, 
-                      //   Icons.analytics, 
-                      //   "Reportes", 
-                      //   Colors.blueAccent,
-                      //   () { /* Tu lógica de reportes */ }
-                      // ),
-                      // _topMenuButton(
-                      //   context, 
-                      //   Icons.settings, 
-                      //   "Ajustes", 
-                      //   Colors.grey,
-                      //   () { /* Ajustes de la app */ }
-                      // ),
                     ],
                   ),
                 ),
@@ -62,28 +40,40 @@ class AdminDashboard extends StatelessWidget {
             ),
           ),
           
-          // Título de la lista de trabajadores
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.all(16.0),
-              child: Text("EQUIPO DE TRABAJO", 
+              child: Text("EQUIPO DE TRABAJO (REAL)", 
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
             ),
           ),
 
-          // Lista de trabajadores
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, i) => _workerCard(context, workers[i]),
-              childCount: workers.length,
-            ),
+          // STREAM REAL DE TRABAJADORES
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+              
+              final workers = snapshot.data!.docs;
+
+              return SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final workerData = workers[i].data() as Map<String, dynamic>;
+                    // Aseguramos que tenga el ID para la navegación
+                    workerData['id'] = workers[i].id; 
+                    return _workerCard(context, workerData);
+                  },
+                  childCount: workers.length,
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  // Widget para los botones superiores de acceso rápido
   Widget _topMenuButton(BuildContext context, IconData icon, String label, Color color, VoidCallback onTap) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -106,6 +96,9 @@ class AdminDashboard extends StatelessWidget {
   }
 
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
+    // Si no tiene el campo 'active' en Firebase, por defecto ponemos true
+    bool isActive = worker['active'] ?? true;
+    
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 0,
@@ -115,17 +108,17 @@ class AdminDashboard extends StatelessWidget {
       ),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: worker['active'] ? Colors.green[100] : Colors.grey[200],
-          child: Icon(Icons.person, color: worker['active'] ? Colors.green : Colors.grey),
+          backgroundColor: isActive ? Colors.green[100] : Colors.grey[200],
+          child: Icon(Icons.person, color: isActive ? Colors.green : Colors.grey),
         ),
-        title: Text(worker['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("${worker['role']} • ${worker['clients']} clientes"),
+        title: Text(worker['name'] ?? 'Usuario sin nombre', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text("${worker['role'] ?? 'Operario'}"),
         trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => WorkerClientsScreen(workerName: worker['name']),
+              builder: (context) => WorkerClientsScreen(workerName: worker['name'] ?? 'Desconocido'),
             ),
           );
         },
