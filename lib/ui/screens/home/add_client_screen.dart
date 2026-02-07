@@ -169,7 +169,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
                 const SizedBox(height: 20),
                 
                 DropdownButtonFormField<String>(
-                  value: _selectedContractType,
+                  initialValue: _selectedContractType,
                   decoration: InputDecoration(
                     labelText: "Tipo de Contrato",
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -246,9 +246,9 @@ class _AddClientScreenState extends State<AddClientScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.05),
+        color: Colors.blue.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
       ),
       child: CheckboxListTile(
         value: _acceptedTerms,
