@@ -23,7 +23,12 @@ class DatabaseService {
     // 1. Si hay una foto nueva, la procesamos a String Base64
     if (photoFile != null) {
       photoBase64 = await _processPhotoToBase64(photoFile);
+      if (await photoFile.exists()) {
+        await photoFile.delete(); 
+      }
     }
+
+
 
     // 2. Preparamos el mapa de datos
     final Map<String, dynamic> clientData = {
