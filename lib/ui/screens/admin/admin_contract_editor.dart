@@ -90,7 +90,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(widget.isReadOnly ? "Detalle del Contrato" : "Editor de Contrato"),
+        title: Text(widget.isReadOnly ? "Detalle del Contrato" : "Editor"),
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
