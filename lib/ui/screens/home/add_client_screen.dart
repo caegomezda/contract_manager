@@ -4,7 +4,6 @@ import 'package:signature/signature.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-// import 'package:firebase_auth/firebase_auth.dart'; // IMPORTANTE
 import '../../../services/database_service.dart';
 import '../admin/terms_editor_screen.dart';
 
@@ -32,8 +31,8 @@ class _AddClientScreenState extends State<AddClientScreen> {
     exportBackgroundColor: Colors.white,
   );
 
-  String _selectedContractType = 'Servicio Técnico';
-  final List<String> _contractTypes = ['Servicio Técnico', 'Alquiler Equipos', 'Consultoría', 'Mantenimiento'];
+  // Cambio clave: Iniciamos en null para que el StreamBuilder asigne el primero disponible
+  String? _selectedContractType;
 
   @override
   void dispose() {
@@ -74,6 +73,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
     if (!_acceptedTerms) return _showMsg("Debe aceptar los términos");
     if (_signatureController.isEmpty) return _showMsg("El cliente debe firmar");
     if (name.length < 3 || clientId.length < 5) return _showMsg("Datos principales incompletos");
+    if (_selectedContractType == null) return _showMsg("Debe seleccionar un tipo de contrato");
 
     setState(() => _isLoading = true);
 
@@ -81,21 +81,22 @@ class _AddClientScreenState extends State<AddClientScreen> {
       final signatureBytes = await _signatureController.toPngBytes();
       List<String> addresses = _addressControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
 
-      // LLAMADA AL SERVICIO (El servicio ya usa FirebaseAuth interno, pero aseguramos datos)
       await DatabaseService().saveClient(
         manualWorkerId: widget.adminAssignId,    
         manualWorkerName: widget.adminAssignName,
-        name: _nameController.text.trim(),
-        clientId: _idController.text.trim(),
-        contractType: _selectedContractType,
+        name: name,
+        clientId: clientId,
+        contractType: _selectedContractType!, // Ya validado que no es null
         addresses: addresses,
         signatureBase64: signatureBytes != null ? base64Encode(signatureBytes) : '',
         photoFile: _imageFile,
         termsAccepted: _acceptedTerms,
       );
 
-      Navigator.pop(context);
-      _showMsg("Contrato vinculado y guardado exitosamente");
+      if (mounted) {
+        Navigator.pop(context);
+        _showMsg("Contrato vinculado y guardado exitosamente");
+      }
     } catch (e) {
       _showMsg("Error al guardar: $e");
     } finally {
@@ -159,7 +160,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
     );
   }
 
-  // --- COMPONENTES MODULARES (OPTIMIZACIÓN) ---
+  // --- COMPONENTES MODULARES ---
 
   Widget _sectionTitle(String title) {
     return Padding(
@@ -206,12 +207,11 @@ class _AddClientScreenState extends State<AddClientScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Al usar Expanded, el texto respetará el espacio del icono y no causará overflow
         const Expanded(
           child: Text(
             "Direcciones de Servicio", 
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            overflow: TextOverflow.ellipsis, // Opcional: añade "..." si el texto es excesivamente largo
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         IconButton(
@@ -238,22 +238,50 @@ class _AddClientScreenState extends State<AddClientScreen> {
     }).toList();
   }
 
+  // MÉTODO ACTUALIZADO: Dropdown Dinámico desde Firebase
   Widget _buildContractDropdown() {
-    return DropdownButtonFormField<String>(
-      initialValue: _selectedContractType,
-      decoration: InputDecoration(
-        labelText: "Tipo de Contrato",
-        filled: true, fillColor: Colors.grey[50],
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      ),
-      items: _contractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-      onChanged: (val) => setState(() => _selectedContractType = val!),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: DatabaseService().getTemplatesStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
+
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Text(
+            "Error: No hay plantillas configuradas en el Admin", 
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
+          );
+        }
+
+        // Extraer títulos
+        final dynamicTypes = snapshot.data!.map((t) => t['title'] as String).toList();
+
+        // Si no hay nada seleccionado aún, tomamos el primero
+        _selectedContractType ??= dynamicTypes.first;
+
+        return DropdownButtonFormField<String>(
+          initialValue: _selectedContractType,
+          decoration: InputDecoration(
+            labelText: "Tipo de Contrato",
+            filled: true, 
+            fillColor: Colors.grey[50],
+            prefixIcon: const Icon(Icons.assignment, color: Colors.blueAccent),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          ),
+          items: dynamicTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+          onChanged: (val) => setState(() => _selectedContractType = val),
+        );
+      },
     );
   }
 
   Widget _buildTermsSection() {
     return Container(
-      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.1), // Corrección: Opacity es más estable
+        borderRadius: BorderRadius.circular(12)
+      ),
       child: CheckboxListTile(
         value: _acceptedTerms,
         onChanged: (val) => setState(() => _acceptedTerms = val ?? false),

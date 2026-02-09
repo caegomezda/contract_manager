@@ -18,12 +18,6 @@ class ClientFormScreen extends StatefulWidget {
 
 class _ClientFormScreenState extends State<ClientFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final List<String> _contractTypes = [
-    'Servicio Técnico',
-    'Alquiler Equipos',
-    'Consultoría',
-    'Mantenimiento'
-  ];
 
   late TextEditingController _nameController;
   late TextEditingController _idController;
@@ -59,7 +53,8 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       _selectedContractType = widget.existingClient!.contractType;
       _acceptedTerms = widget.existingClient!.termsAccepted;
     } else {
-      _selectedContractType = _contractTypes.first;
+      _selectedContractType = null; // Se establecerá dinámicamente al cargar los datos de Firebase
+      _acceptedTerms = false;
     }
   }
 
@@ -134,7 +129,7 @@ Future<void> _saveData() async {
         // manualWorkerName: widget.existingClient?.workerName,
         name: _nameController.text.trim(),
         clientId: _idController.text.trim(),
-        contractType: _selectedContractType ?? _contractTypes.first,
+        contractType: _selectedContractType ?? "Sin especificar",
         addresses: addresses,
         signatureBase64: signatureBase64,
         photoFile: _imageFile,
@@ -254,11 +249,34 @@ Future<void> _saveData() async {
   }
 
   Widget _buildContractDropdown() {
-    return DropdownButtonFormField<String>(
-      initialValue: _selectedContractType,
-      items: _contractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-      onChanged: (val) => setState(() => _selectedContractType = val),
-      decoration: const InputDecoration(labelText: "Tipo de Contrato", border: OutlineInputBorder()),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: DatabaseService().getTemplatesStream(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+
+        // Extraemos solo los títulos de las plantillas de Firebase
+        List<String> dynamicContractTypes = snapshot.data!
+            .map((t) => t['title'] as String)
+            .toList();
+
+        // Validación para evitar errores si el valor seleccionado no existe en la nueva lista
+        if (_selectedContractType == null || !dynamicContractTypes.contains(_selectedContractType)) {
+          _selectedContractType = dynamicContractTypes.isNotEmpty ? dynamicContractTypes.first : null;
+        }
+
+        return DropdownButtonFormField<String>(
+          initialValue: _selectedContractType,
+          decoration: InputDecoration(
+            labelText: "Tipo de Contrato (Desde Firebase)",
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          items: dynamicContractTypes.map((t) => DropdownMenuItem(
+            value: t, 
+            child: Text(t)
+          )).toList(),
+          onChanged: (val) => setState(() => _selectedContractType = val),
+        );
+      },
     );
   }
 
