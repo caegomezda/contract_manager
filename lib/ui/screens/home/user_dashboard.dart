@@ -1,11 +1,18 @@
 import 'package:contract_manager/ui/screens/home/add_client_screen.dart';
 import 'package:contract_manager/ui/screens/home/client_detail_screen.dart';
 import 'package:contract_manager/services/database_service.dart';
-import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class UserDashboard extends StatelessWidget {
+class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
+
+  @override
+  State<UserDashboard> createState() => _UserDashboardState();
+}
+
+class _UserDashboardState extends State<UserDashboard> {
+  String _searchQuery = ""; // Variable para almacenar lo que el usuario escribe
 
   @override
   Widget build(BuildContext context) {
@@ -13,34 +20,95 @@ class UserDashboard extends StatelessWidget {
       backgroundColor: Colors.grey[50],
       body: Column(
         children: [
-          _buildHeader(context), // Mantenemos tu header
+          _buildHeader(context),
+          
+          // --- BUSCADOR DE CLIENTES ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: TextField(
+                onChanged: (val) {
+                  setState(() {
+                    // Limpiamos espacios para evitar búsquedas vacías accidentales
+                    _searchQuery = val.trim().toLowerCase();
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: "Buscar cliente por nombre...",
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                  prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+              ),
+            ),
+          ),
+
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
-              // Ahora el servicio filtrará automáticamente por el UID del usuario logueado
-              stream: DatabaseService().getClientsStream(), 
+              stream: DatabaseService().getClientsStream(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-                final clients = snapshot.data!;
+                // 1. OBTENEMOS LOS DATOS
+                List<Map<String, dynamic>> allClients = List.from(snapshot.data!);
 
-                if (clients.isEmpty) {
-                  return const Center(child: Text("No tienes clientes registrados aún."));
+                // 2. ORDEN ALFABÉTICO (A-Z) POR DEFECTO
+                allClients.sort((a, b) {
+                  String nameA = (a['name'] ?? "").toString().toLowerCase();
+                  String nameB = (b['name'] ?? "").toString().toLowerCase();
+                  return nameA.compareTo(nameB);
+                });
+
+                // 3. APLICAMOS EL FILTRO DEL BUSCADOR
+                final filteredClients = allClients.where((client) {
+                  final name = (client['name'] ?? "").toString().toLowerCase();
+                  return name.contains(_searchQuery);
+                }).toList();
+
+                if (filteredClients.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Text(
+                        _searchQuery.isEmpty 
+                          ? "No tienes clientes registrados aún." 
+                          : "No se encontró ningún cliente con el nombre '$_searchQuery'.",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  );
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: clients.length,
+                  itemCount: filteredClients.length,
                   itemBuilder: (context, i) => _buildClientCard(
-                    clients[i],
+                    filteredClients[i],
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ClientDetailScreen(client: clients[i], isAdmin: false),
+                          builder: (context) => ClientDetailScreen(
+                            client: filteredClients[i], 
+                            isAdmin: false,
+                          ),
                         ),
                       );
-                    }
+                    },
                   ),
                 );
               },
@@ -63,34 +131,28 @@ class UserDashboard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 20),
       decoration: const BoxDecoration(
-        color: Color.fromARGB(110, 255, 255, 255),
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(30), 
+          bottomRight: Radius.circular(30),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Envolvemos el título en Expanded para que no empuje a los iconos
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Mis Contratos", 
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              ],
+          const Expanded(
+            child: Text(
+              "Mis Contratos",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
-           // Los iconos ahora se mantendrán a la derecha sin desbordar
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.logout, color: Colors.grey),
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                  if (!context.mounted) return;
-                  Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-                },
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.grey),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+            },
           ),
         ],
       ),
@@ -98,7 +160,6 @@ class UserDashboard extends StatelessWidget {
   }
 
   Widget _buildClientCard(Map<String, dynamic> client, {VoidCallback? onTap}) {
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -109,7 +170,7 @@ class UserDashboard extends StatelessWidget {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5), // Opacidad corregida para evitar errores
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -118,14 +179,12 @@ class UserDashboard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(15),
           child: Row(
-            // Usamos CrossAxisAlignment.stretch para que el botón lateral 
-            // siempre ocupe todo el alto de la tarjeta de forma uniforme
-            crossAxisAlignment: CrossAxisAlignment.stretch, 
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
                 flex: 8,
                 child: Padding(
-                  padding: const EdgeInsets.all(12.0), // Un poco menos de padding ayuda al espacio
+                  padding: const EdgeInsets.all(12.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -137,13 +196,10 @@ class UserDashboard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      // SOLUCIÓN AL OVERFLOW: 
-                      // Añadimos maxLines y ellipsis también aquí para que 
-                      // textos largos como "Servicio Técnico" no rompan la tarjeta
                       Text(
                         "Contrato: ${client['contract_type'] ?? 'No especificado'}",
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                        maxLines: 1, 
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -155,8 +211,6 @@ class UserDashboard extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.blueGrey[400],
-                    // Si tu tarjeta tiene bordes redondeados, asegúrate de redondear 
-                    // solo los del lado derecho del botón para que encaje perfecto
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(12),
                       bottomRight: Radius.circular(12),
