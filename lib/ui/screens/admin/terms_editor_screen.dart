@@ -33,7 +33,7 @@ class TermsAndConditionsScreen extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
-                          color: Colors.indigo.withOpacity(0.05),
+                          color: Colors.indigo.withValues(alpha: 0.05),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.gavel_rounded, size: 50, color: Colors.indigo),
@@ -87,7 +87,7 @@ class TermsAndConditionsScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5))
                 ]
               ),
               child: SizedBox(

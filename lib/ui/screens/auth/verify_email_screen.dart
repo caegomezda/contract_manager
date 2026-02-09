@@ -21,7 +21,7 @@ class VerifyEmailScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.indigo.withOpacity(0.05),
+                  color: Colors.indigo.withValues(alpha: 0.05),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

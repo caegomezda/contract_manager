@@ -143,57 +143,78 @@ class _AddClientScreenState extends State<AddClientScreen> {
         backgroundColor: Colors.white, 
         foregroundColor: Colors.black
       ),
-      body: _isLoading 
-        ? const Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [CircularProgressIndicator(), SizedBox(height: 20), Text("Subiendo información...")],
-          ))
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle("Evidencia Fotográfica"),
-                _buildPhotoBox(),
-                
-                const SizedBox(height: 25),
-                _sectionTitle("Datos del Cliente"),
-                _buildInput("Nombre o Razón Social", _nameController, Icons.business),
-                const SizedBox(height: 15),
-                _buildInput("Identificación (NIT/CC)", _idController, Icons.badge),
-                
-                const SizedBox(height: 25),
-                _buildAddressHeader(),
-                ..._buildAddressList(),
-
-                const SizedBox(height: 20),
-                _buildContractDropdown(),
-                
-                const SizedBox(height: 30),
-                _buildTermsSection(),
-
-                const SizedBox(height: 30),
-                _sectionTitle("Firma Autorizada"),
-                _buildSignaturePad(),
-                
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: () => _signatureController.clear(),
-                    icon: const Icon(Icons.refresh, color: Colors.orange),
-                    label: const Text("Reintentar Firma", style: TextStyle(color: Colors.orange)),
+      // Usamos Stack para el modo Offline y bloqueo de UI
+      body: Stack(
+        children: [
+          IgnorePointer(
+            ignoring: _isLoading, // Bloquea toques si está guardando
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle("Evidencia Fotográfica"),
+                  _buildPhotoBox(),
+                  const SizedBox(height: 25),
+                  _sectionTitle("Datos del Cliente"),
+                  _buildInput("Nombre o Razón Social", _nameController, Icons.business),
+                  const SizedBox(height: 15),
+                  _buildInput("Identificación (NIT/CC)", _idController, Icons.badge),
+                  const SizedBox(height: 25),
+                  _buildAddressHeader(),
+                  ..._buildAddressList(),
+                  const SizedBox(height: 20),
+                  _buildContractDropdown(),
+                  const SizedBox(height: 30),
+                  _buildTermsSection(),
+                  const SizedBox(height: 30),
+                  _sectionTitle("Firma Autorizada"),
+                  _buildSignaturePad(),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => _signatureController.clear(),
+                      icon: const Icon(Icons.refresh, color: Colors.orange),
+                      label: const Text("Reintentar Firma", style: TextStyle(color: Colors.orange)),
+                    ),
                   ),
-                ),
-                
-                const SizedBox(height: 30),
-                _buildSubmitButton(),
-                const SizedBox(height: 40),
-              ],
+                  const SizedBox(height: 30),
+                  _buildSubmitButton(),
+                  const SizedBox(height: 40),
+                ],
+              ),
             ),
           ),
+
+          // Capa de carga para protección de estado
+          if (_isLoading)
+            Container(
+              color: Colors.black.withValues(alpha: 0.4),
+              child: Center(
+                child: Card(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.indigo),
+                        const SizedBox(height: 20),
+                        const Text("Guardando Registro...", 
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        Text("Se sincronizará al detectar internet", 
+                          style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
-
   // --- COMPONENTES VISUALES ---
 
   Widget _sectionTitle(String title) {
@@ -229,7 +250,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
           color: Colors.grey[100],
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
-            color: _imageFile == null ? Colors.indigo.withOpacity(0.2) : Colors.green, 
+            color: _imageFile == null ? Colors.indigo.withValues(alpha: 0.2) : Colors.green, 
             width: 2, 
             style: _imageFile == null ? BorderStyle.solid : BorderStyle.solid
           ),
@@ -275,41 +296,48 @@ class _AddClientScreenState extends State<AddClientScreen> {
       );
     }).toList();
   }
-
   Widget _buildContractDropdown() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: DatabaseService().getTemplatesStream(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
+        // Si tiene datos (aunque sea de caché), los mostramos directamente
+        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+          final dynamicTypes = snapshot.data!.map((t) => t['title'] as String).toList();
+          
+          // Evita errores de valor nulo si la lista cambió
+          if (_selectedContractType == null || !dynamicTypes.contains(_selectedContractType)) {
+            _selectedContractType = dynamicTypes.first;
+          }
 
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Text("⚠️ No hay tipos de contrato definidos.", style: TextStyle(color: Colors.red));
+          return DropdownButtonFormField<String>(
+            initialValue: _selectedContractType, // Usar 'value' en lugar de 'initialValue' para mayor control
+            decoration: InputDecoration(
+              labelText: "Seleccionar Contrato",
+              filled: true, 
+              fillColor: Colors.grey[100],
+              prefixIcon: const Icon(Icons.article_outlined, color: Colors.indigo),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+            items: dynamicTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+            onChanged: (val) => setState(() => _selectedContractType = val),
+          );
         }
 
-        final dynamicTypes = snapshot.data!.map((t) => t['title'] as String).toList();
-        _selectedContractType ??= dynamicTypes.first;
+        // Mientras no haya datos (ni caché ni red)
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
 
-        return DropdownButtonFormField<String>(
-          initialValue: _selectedContractType,
-          decoration: InputDecoration(
-            labelText: "Seleccionar Plantilla de Contrato",
-            filled: true, 
-            fillColor: Colors.grey[100],
-            prefixIcon: const Icon(Icons.article_outlined, color: Colors.indigo),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          ),
-          items: dynamicTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-          onChanged: (val) => setState(() => _selectedContractType = val),
-        );
+        return const Text("No hay plantillas disponibles (Revisa tu conexión)", style: TextStyle(color: Colors.red));
       },
     );
   }
-
+    
   Widget _buildTermsSection() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.indigo.withOpacity(0.05),
+        color: Colors.indigo.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12)
       ),
       child: CheckboxListTile(

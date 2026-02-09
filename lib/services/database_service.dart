@@ -37,7 +37,7 @@ class DatabaseService {
       'client_id': clientId,
       'contract_type': contractType,
       'addresses': addresses,
-      'signature_path': signatureBase64,
+      'signature_path': signatureBase64, // Tu firma en Base64
       'terms_accepted': termsAccepted,
       'updated_at': FieldValue.serverTimestamp(),
     };
@@ -46,38 +46,55 @@ class DatabaseService {
       clientData['photo_data_base64'] = photoBase64;
     }
 
-    // --- LÓGICA DE VINCULACIÓN Y TRANSACCIÓN ---
+    // --- LÓGICA DE GUARDADO INSTANTÁNEO ---
     try {
-      await _db.runTransaction((transaction) async {
-        // Referencia al documento del cliente
-        DocumentReference clientRef = _db.collection('clients').doc(id ?? clientId);
-        
-        // Referencia a la plantilla para aumentar el contador de usos
-        QuerySnapshot templateQuery = await _db.collection('templates')
-            .where('title', isEqualTo: contractType)
-            .limit(1)
-            .get();
+      final String docId = (id != null && id.isNotEmpty) ? id : clientId;
+      DocumentReference clientRef = _db.collection('clients').doc(docId);
 
-        if (id == null || id.isEmpty) {
-          // Si es nuevo cliente, asignamos el trabajador
-          clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
-          clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
-          transaction.set(clientRef, clientData);
+      if (id == null || id.isEmpty) {
+        // ES UN NUEVO REGISTRO
+        clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
+        clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
+        clientData['created_at'] = FieldValue.serverTimestamp();
 
-          // Si encontramos la plantilla, aumentamos su contador de firmas
-          if (templateQuery.docs.isNotEmpty) {
-            transaction.update(templateQuery.docs.first.reference, {
-              'client_count': FieldValue.increment(1)
-            });
-          }
-        } else {
-          // Si es actualización
-          transaction.update(clientRef, clientData);
-        }
-      });
+        // QUITAMOS EL 'await': Firestore guarda localmente y sigue
+        clientRef.set(clientData).catchError((e) => print("Error en background: $e"));
+
+        // Actualizamos contador también sin esperar
+        _updateTemplateCounter(contractType);
+
+      } else {
+        // ACTUALIZACIÓN: También sin 'await' para no bloquear la UI
+        clientRef.update(clientData).catchError((e) => print("Error en background: $e"));
+      }
+      
+      // Retornamos de inmediato para que la UI se desbloquee
+      return; 
+
     } catch (e) {
-      debugPrint("Error en transacción de guardado: $e");
+      debugPrint("Error inmediato: $e");
       rethrow;
+    }
+  }
+
+  /// Actualiza el contador de la plantilla de manera que funcione offline.
+  /// Firestore permite usar FieldValue.increment() incluso sin conexión.
+  void _updateTemplateCounter(String contractType) async {
+    try {
+      // Intentamos localizar la plantilla por su título. 
+      // Nota: Para que sea 100% efectivo offline, el ID del doc en 'templates' 
+      // debería ser el mismo título o tenerlo pre-identificado.
+      final templateQuery = await _db.collection('templates')
+          .where('title', isEqualTo: contractType)
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      if (templateQuery.docs.isNotEmpty) {
+        await templateQuery.docs.first.reference.update({
+          'client_count': FieldValue.increment(1)
+        });
+      }
+    } catch (e) {
+      print("Error actualizando contador (no crítico): $e");
     }
   }
 
@@ -90,28 +107,35 @@ class DatabaseService {
     }
   }
 
-  // Stream para que el operario vea sus últimos clientes registrados
+  // --- STREAM DE CLIENTES CON SOPORTE OFFLINE ---
   Stream<List<Map<String, dynamic>>> getClientsStream() {
     String? uid = _auth.currentUser?.uid;
     return _db.collection('clients')
         .where('worker_id', isEqualTo: uid)
-        .orderBy('updated_at', descending: true)
-        .limit(20) 
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) {
+        .snapshots(includeMetadataChanges: true) // IMPORTANTE para ver cambios locales
+        .map((snapshot) {
+          final docs = snapshot.docs.map((doc) {
               final data = doc.data();
               data['id'] = doc.id; 
               return data;
-            }).toList());
+            }).toList();
+          
+          // Ordenamos manualmente porque el orderBy de Firestore a veces falla offline 
+          // si el índice no está creado o el timestamp es null (pendiente de subir)
+          docs.sort((a, b) {
+            final aTime = (a['updated_at'] as Timestamp?)?.toDate() ?? DateTime.now();
+            final bTime = (b['updated_at'] as Timestamp?)?.toDate() ?? DateTime.now();
+            return bTime.compareTo(aTime);
+          });
+          return docs;
+        });
   }
 
   // --- GESTIÓN DE PLANTILLAS (ADMIN) ---
 
   Stream<List<Map<String, dynamic>>> getTemplatesStream() {
     return _db.collection('templates')
-        // Quitamos el orderBy temporalmente para verificar si es el error del índice
-        // O lo dejamos pero aseguramos que el documento exista
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
           final docs = snapshot.docs.map((doc) {
             final data = doc.data();
@@ -119,11 +143,10 @@ class DatabaseService {
             return data;
           }).toList();
           
-          // Ordenamos manualmente en memoria para evitar errores de índice en Firebase
           docs.sort((a, b) {
             final aTime = (a['updated_at'] as Timestamp?)?.toDate() ?? DateTime(2000);
             final bTime = (b['updated_at'] as Timestamp?)?.toDate() ?? DateTime(2000);
-            return bTime.compareTo(aTime); // Descendente
+            return bTime.compareTo(aTime); 
           });
           
           return docs;
@@ -139,7 +162,7 @@ class DatabaseService {
       };
 
       if (id == null || id.isEmpty) {
-        data['client_count'] = 0; // Inicializamos contador
+        data['client_count'] = 0; 
         await _db.collection('templates').add(data);
       } else {
         await _db.collection('templates').doc(id).update(data);
@@ -153,8 +176,7 @@ class DatabaseService {
   Future<Map<String, dynamic>?> getTemplateByTitle(String title) async {
     final query = await _db.collection('templates')
         .where('title', isEqualTo: title)
-        .limit(1)
-        .get();
+        .get(const GetOptions(source: Source.serverAndCache));
     return query.docs.isNotEmpty ? query.docs.first.data() : null;
   }
 }

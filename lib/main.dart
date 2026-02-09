@@ -29,7 +29,7 @@ void main() async {
   // Configuración de optimización para Firestore
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
-    cacheSizeBytes: 104857600, // Límite de 100MB para evitar saturación de disco
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
   runApp(const MyApp());

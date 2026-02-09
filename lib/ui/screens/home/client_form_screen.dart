@@ -178,44 +178,81 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       ),
     );
   }
-
-  @override
+@override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingClient == null ? "Nuevo Cliente" : "Actualizar Cliente"),
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator()) 
-        : Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                _buildPhotoSelector(),
-                const SizedBox(height: 20),
-                _buildTextField(_nameController, "Nombre Completo"),
-                const SizedBox(height: 15),
-                _buildTextField(_idController, "Cédula o NIT"),
-                const SizedBox(height: 20),
-                _buildAddressSection(),
-                const SizedBox(height: 20),
-                _buildContractDropdown(),
-                const SizedBox(height: 10),
-                _buildTermsTile(),
-                const SizedBox(height: 20),
-                const Text("FIRMA DEL CLIENTE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 10),
-                _buildSignaturePad(),
-                _buildSignatureClearButton(),
-                const SizedBox(height: 30),
-                _buildSaveButton(),
-              ],
+      // Usamos Stack para encimar el cargador sobre el formulario
+      body: Stack(
+        children: [
+          // 1. El Formulario
+          IgnorePointer(
+            ignoring: _isLoading, // Bloquea todos los inputs si está cargando
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _buildPhotoSelector(),
+                  const SizedBox(height: 20),
+                  _buildTextField(_nameController, "Nombre Completo"),
+                  const SizedBox(height: 15),
+                  _buildTextField(_idController, "Cédula o NIT"),
+                  const SizedBox(height: 20),
+                  _buildAddressSection(),
+                  const SizedBox(height: 20),
+                  _buildContractDropdown(),
+                  const SizedBox(height: 10),
+                  _buildTermsTile(),
+                  const SizedBox(height: 20),
+                  const Text("FIRMA DEL CLIENTE", 
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 10),
+                  _buildSignaturePad(),
+                  _buildSignatureClearButton(),
+                  const SizedBox(height: 30),
+                  _buildSaveButton(),
+                ],
+              ),
             ),
           ),
+
+          // 2. El Overlay de Bloqueo (Solo se ve cuando _isLoading es true)
+          if (_isLoading)
+            Container(
+              color: Colors.black.withValues(alpha: 0.4), // Oscurece el fondo
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(25),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: Colors.indigo),
+                      const SizedBox(height: 20),
+                      const Text(
+                        "Guardando datos...",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        "Sincronización offline activa",
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
-
   // --- COMPONENTES DE INTERFAZ ---
 
   Widget _buildTextField(TextEditingController controller, String label) {
