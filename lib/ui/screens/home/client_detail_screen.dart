@@ -20,8 +20,10 @@ class ClientDetailScreen extends StatefulWidget {
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
   bool _isGenerating = false;
 
+  // ignore: unused_element
   Future<void> _generatePDF(BuildContext context) async {
     setState(() => _isGenerating = true);
+    // ignore: unused_local_variable
     String termsText = ""; 
     
     try {
@@ -43,7 +45,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         // Si necesitas loguear en desarrollo usa: debugPrint("Usando respaldo: $e");
       }
 
-      await PdfService.generateFinalContract(widget.client, termsText);
+      await PdfService.previewContract(
+        context,                      
+        widget.client,                
+        widget.client['terms_text'] ?? ''
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -154,8 +160,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           );
           Navigator.push(context, MaterialPageRoute(builder: (context) => ClientFormScreen(existingClient: clientModel)));
         },
-        icon: const Icon(Icons.history_edu, color: Colors.white),
-        label: const Text("ACTUALIZAR / RENOVAR CONTRATO", style: TextStyle(color: Colors.white)),
+        label: const Text("ACTUALIZAR", style: TextStyle(color: Colors.white)),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.orange[700],
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -212,11 +217,17 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         Positioned(
           top: 10,
           right: 10,
-          child: CircleAvatar(
-            backgroundColor: Colors.white,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, spreadRadius: 2)
+              ],
+            ),
             child: IconButton(
-              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              onPressed: () => _generatePDF(context),
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 35),
+              onPressed: () => PdfService.previewContract(context, widget.client, widget.client['terms_text'] ?? ''),
             ),
           ),
         ),
@@ -224,21 +235,24 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
   }
 
-  Widget _buildDownloadButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 55,
-      child: ElevatedButton.icon(
-        onPressed: () => _generatePDF(context),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blueAccent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        icon: const Icon(Icons.download_rounded, color: Colors.white),
-        label: const Text("DESCARGAR PDF FIRMADO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+Widget _buildDownloadButton() {
+  return SizedBox(
+    width: double.infinity,
+    height: 55,
+    child: ElevatedButton.icon(
+      // USAMOS LA FUNCIÓN DE DESCARGA DIRECTA
+      onPressed: () => PdfService.downloadContract(context, widget.client, widget.client['terms_text'] ?? ''),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blueAccent,
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-    );
-  }
+      icon: const Icon(Icons.file_download, color: Colors.white),
+      label: const Text("DESCARGAR PDF", 
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+    ),
+  );
+}
 
   Widget _buildAddressesSection() {
     return ExpansionTile(

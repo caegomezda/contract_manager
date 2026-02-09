@@ -63,20 +63,23 @@ class UserDashboard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 20),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: Color.fromARGB(110, 255, 255, 255),
         borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("Mis Contratos", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              Text("Sincronización en tiempo real", style: TextStyle(color: Colors.grey)),
-            ],
+          // Envolvemos el título en Expanded para que no empuje a los iconos
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Mis Contratos", 
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ],
+            ),
           ),
-          // --- AGREGADO: Botón Logout junto al Avatar ---
+           // Los iconos ahora se mantendrán a la derecha sin desbordar
           Row(
             children: [
               IconButton(
@@ -87,10 +90,6 @@ class UserDashboard extends StatelessWidget {
                   Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
                 },
               ),
-              const CircleAvatar(
-                backgroundColor: Colors.blueAccent, 
-                child: Icon(Icons.person, color: Colors.white)
-              ),
             ],
           ),
         ],
@@ -99,7 +98,6 @@ class UserDashboard extends StatelessWidget {
   }
 
   Widget _buildClientCard(Map<String, dynamic> client, {VoidCallback? onTap}) {
-    bool isSyncing = client['is_local'] ?? false;
 
     return GestureDetector(
       onTap: onTap,
@@ -120,25 +118,33 @@ class UserDashboard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(15),
           child: Row(
+            // Usamos CrossAxisAlignment.stretch para que el botón lateral 
+            // siempre ocupe todo el alto de la tarjeta de forma uniforme
+            crossAxisAlignment: CrossAxisAlignment.stretch, 
             children: [
               Expanded(
                 flex: 8,
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(12.0), // Un poco menos de padding ayuda al espacio
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        client['name'] ?? 'Sin nombre',
+                        client['name'] ?? 'Cliente sin nombre',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
+                      // SOLUCIÓN AL OVERFLOW: 
+                      // Añadimos maxLines y ellipsis también aquí para que 
+                      // textos largos como "Servicio Técnico" no rompan la tarjeta
                       Text(
-                        "Tipo: ${client['contract_type'] ?? 'No definido'}",
+                        "Contrato: ${client['contract_type'] ?? 'No especificado'}",
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -147,13 +153,17 @@ class UserDashboard extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: Container(
-                  color: isSyncing ? Colors.orange : Colors.green,
-                  child: Center(
-                    child: Icon(
-                      isSyncing ? Icons.cloud_upload : Icons.check_circle,
-                      color: Colors.white,
-                      size: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey[400],
+                    // Si tu tarjeta tiene bordes redondeados, asegúrate de redondear 
+                    // solo los del lado derecho del botón para que encaje perfecto
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
                     ),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
                   ),
                 ),
               ),

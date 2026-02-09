@@ -127,10 +127,6 @@ class _WorkerClientsScreenState extends State<WorkerClientsScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        "Contrato: ${client['contract_type'] ?? 'No especificado'}",
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                      ),
                     ],
                   ),
                 ),
