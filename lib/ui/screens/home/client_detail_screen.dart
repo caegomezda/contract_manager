@@ -7,6 +7,10 @@ import '../../../services/pdf_service.dart';
 import '../../../services/database_service.dart';
 import 'client_form_screen.dart';
 
+/// Pantalla de detalle que muestra la información consolidada de un cliente.
+/// 
+/// Permite la edición, previsualización de documentos legales y descarga de 
+/// contratos procesando dinámicamente las plantillas de Firebase.
 class ClientDetailScreen extends StatefulWidget {
   final Map<String, dynamic> client;
   final bool isAdmin;
@@ -20,91 +24,65 @@ class ClientDetailScreen extends StatefulWidget {
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
   bool _isGenerating = false;
 
-  /// Lógica dinámica para obtener la plantilla y generar el PDF
+  /// Obtiene la plantilla de Firebase y reemplaza los marcadores {{...}} con datos reales.
+  Future<String> _getProcessedTerms() async {
+    String contractTitle = widget.client['contract_type'] ?? 'Servicio Técnico';
+    final templateData = await DatabaseService().getTemplateByTitle(contractTitle);
+    
+    String termsBody = templateData?['body'] ?? "Contrato de prestación de servicios para {{nombre}}.";
+
+    // Lógica de reemplazo de variables (Hotkeys)
+    return termsBody
+        .replaceAll('{{nombre}}', widget.client['name'] ?? '')
+        .replaceAll('{{id}}', widget.client['client_id'] ?? '')
+        .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
+        .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
+  }
+
+  /// Genera y abre el visor de PDF integrado.
   Future<void> _processAndPreviewPDF(BuildContext context) async {
     setState(() => _isGenerating = true);
-    
     try {
-      // 1. Obtener el cuerpo del contrato desde Firebase usando el título
-      String contractTitle = widget.client['contract_type'] ?? 'Servicio Técnico';
-      String termsBody = "";
-
-      final templateData = await DatabaseService().getTemplateByTitle(contractTitle);
-      
-      if (templateData != null) {
-        termsBody = templateData['body'] ?? "";
-      } else {
-        termsBody = "Contrato de prestación de servicios para {{nombre}}.";
-      }
-
-      // 2. Reemplazar variables dinámicas (Hotkeys)
-      String processedTerms = termsBody
-          .replaceAll('{{nombre}}', widget.client['name'] ?? '')
-          .replaceAll('{{id}}', widget.client['client_id'] ?? '')
-          .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
-          .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
-
-      // 3. Lanzar la previsualización
-      await PdfService.previewContract(
-        context,
-        widget.client,
-        processedTerms,
-      );
-
+      String processedTerms = await _getProcessedTerms();
+      await PdfService.previewContract(context, widget.client, processedTerms);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: Colors.red, content: Text("Error al procesar PDF: $e")),
-      );
+      _showErrorSnackBar("Error al procesar PDF: $e");
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
   }
 
+  /// Procesa el texto y dispara la descarga del archivo al dispositivo.
   Future<void> _processAndDownloadPDF(BuildContext context) async {
     setState(() => _isGenerating = true);
     try {
-      // 1. Obtener la plantilla (Igual que en la previsualización)
-      String contractTitle = widget.client['contract_type'] ?? 'Servicio Técnico';
-      final templateData = await DatabaseService().getTemplateByTitle(contractTitle);
-      String termsBody = templateData?['body'] ?? "Contrato para {{nombre}}.";
-
-      // 2. Reemplazar variables (Hotkeys)
-      String processedTerms = termsBody
-          .replaceAll('{{nombre}}', widget.client['name'] ?? '')
-          .replaceAll('{{id}}', widget.client['client_id'] ?? '')
-          .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
-          .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
-
-      // 3. DESCARGA REAL con el texto procesado
+      String processedTerms = await _getProcessedTerms();
       await PdfService.downloadContract(context, widget.client, processedTerms);
-
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: Colors.red, content: Text("Error al descargar: $e")),
-      );
+      _showErrorSnackBar("Error al descargar: $e");
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
   }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(backgroundColor: Colors.red, content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Detalle del Contrato"),
+        title: const Text("Detalle"),
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
       ),
       body: _isGenerating 
-        ? const Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 15),
-              Text("Procesando documento legal...")
-            ],
-          )) 
+        ? _buildLoadingState()
         : SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -114,8 +92,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 const SizedBox(height: 20),
                 _buildUpdateBtn(),
                 const SizedBox(height: 25),
-                const Text("INFORMACIÓN DEL CLIENTE", 
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+                _buildSectionTitle("INFORMACIÓN DEL CLIENTE"),
                 const Divider(),
                 _infoRow(Icons.business, "Nombre / Razón Social", widget.client['name'] ?? 'N/A'),
                 _infoRow(Icons.badge, "Identificación", widget.client['client_id'] ?? 'N/A'),
@@ -127,15 +104,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 ],
 
                 const SizedBox(height: 30),
-                const Text("EVIDENCIA Y SEGURIDAD", 
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+                _buildSectionTitle("EVIDENCIA Y SEGURIDAD"),
                 const Divider(),
                 const SizedBox(height: 15),
                 _buildPhotoSection(),
                 
                 const SizedBox(height: 25),
-                const Text("FIRMA REGISTRADA", 
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+                _buildSectionTitle("FIRMA REGISTRADA"),
                 const SizedBox(height: 10),
                 _buildSignatureCanvas(),
                 
@@ -148,6 +123,28 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
   }
 
+  // --- COMPONENTES DE INTERFAZ ---
+
+  Widget _buildLoadingState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: Colors.blueAccent),
+          SizedBox(height: 15),
+          Text("Procesando ...", style: TextStyle(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title, 
+      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12, letterSpacing: 1.1)
+    );
+  }
+
   Widget _buildStatusHeader() {
     const Color statusColor = Colors.green;
     return Container(
@@ -155,13 +152,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       decoration: BoxDecoration(
         color: statusColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.5)),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
       child: const Row(
         children: [
           Icon(Icons.verified_user_rounded, color: statusColor),
           SizedBox(width: 12),
-          Text("CONTRATO VIGENTE", style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
+          Text("ACTIVO", style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -187,7 +184,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           Navigator.push(context, MaterialPageRoute(builder: (context) => ClientFormScreen(existingClient: clientModel)));
         },
         icon: const Icon(Icons.edit_note, color: Colors.orange),
-        label: const Text("EDITAR INFORMACIÓN", style: TextStyle(color: Colors.orange)),
+        label: const Text("MODIFICAR DATOS", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: Colors.orange),
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -205,7 +202,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         const Text("Registro Fotográfico", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
         const SizedBox(height: 10),
         Container(
-          height: 200,
+          height: 220,
           width: double.infinity,
           decoration: BoxDecoration(
             color: Colors.grey[100],
@@ -253,19 +250,18 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blueAccent,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
             ),
-            label: const Text("VER CONTRATO", 
+            icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+            label: const Text("Ver Contrato", 
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ),
         const SizedBox(height: 12),
         TextButton.icon(
-          onPressed: _isGenerating ? null : () async {
-            // LLAMAMOS A UNA FUNCIÓN QUE PROCESE EL TEXTO ANTES DE DESCARGAR
-            await _processAndDownloadPDF(context);
-          },
-          icon: const Icon(Icons.download, color: Colors.blueAccent),
-          label: const Text("Descargar"),
+          onPressed: _isGenerating ? null : () => _processAndDownloadPDF(context),
+          icon: const Icon(Icons.file_download_outlined, color: Colors.blueAccent),
+          label: const Text("Descargar Contrato", style: TextStyle(fontWeight: FontWeight.bold)),
         )
       ],
     );
@@ -274,12 +270,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   Widget _buildAddressesSection() {
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
-      leading: const Icon(Icons.location_on, color: Colors.blueAccent),
-      title: const Text("Sedes / Direcciones", style: TextStyle(fontWeight: FontWeight.bold)),
+      leading: const Icon(Icons.location_on_outlined, color: Colors.blueAccent),
+      title: const Text("Direcciones Vinculadas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
       children: (widget.client['addresses'] as List).map((dir) => ListTile(
         dense: true,
-        title: Text(dir.toString()),
-        leading: const Icon(Icons.circle, size: 6, color: Colors.grey),
+        contentPadding: const EdgeInsets.only(left: 40),
+        title: Text(dir.toString(), style: const TextStyle(fontSize: 13)),
+        leading: const Icon(Icons.arrow_right, size: 18, color: Colors.grey),
       )).toList(),
     );
   }
@@ -289,14 +286,18 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.blueGrey),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: Colors.blueGrey[50], borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, size: 20, color: Colors.blueGrey),
+          ),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
+                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
               ],
             ),
           ),

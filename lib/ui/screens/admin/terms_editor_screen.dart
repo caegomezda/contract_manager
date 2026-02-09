@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+/// Pantalla informativa sobre los términos legales.
+/// Se accede desde el formulario de registro de cliente.
 class TermsAndConditionsScreen extends StatelessWidget {
   const TermsAndConditionsScreen({super.key});
 
@@ -8,67 +10,98 @@ class TermsAndConditionsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Información Legal", style: TextStyle(color: Colors.black)),
+        title: const Text("Información Legal", 
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.withOpacity(0.05),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.gavel_rounded, size: 50, color: Colors.indigo),
+                      ),
+                    ),
+                    const SizedBox(height: 25),
                     const Center(
-                      child: Icon(Icons.gavel_rounded, size: 60, color: Colors.blueAccent),
+                      child: Text(
+                        "TÉRMINOS DE PRESTACIÓN DE SERVICIO",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                      ),
                     ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      "TÉRMINOS DE PRESTACIÓN DE SERVICIO",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Divider(),
                     ),
-                    const Divider(height: 40),
                     
-                    // --- AQUÍ ESTÁ EL TEXTO INFORMATIVO ---
                     _sectionTitle("1. Objeto del Servicio"),
-                    _bodyText("El presente documento detalla la prestación de servicios técnicos y administrativos solicitados por el cliente. La aplicación actúa como un registro digital de la voluntad de las partes."),
+                    _bodyText("El presente documento detalla la prestación de servicios técnicos y administrativos solicitados por el cliente. La aplicación actúa como un registro digital de la voluntad de las partes y soporte de la gestión realizada."),
                     
                     _sectionTitle("2. Veracidad de los Datos"),
-                    _bodyText("El cliente declara que la información suministrada (identificación, dirección y contacto) es veraz. Cualquier error en los datos es responsabilidad del firmante."),
+                    _bodyText("El cliente declara que la información suministrada (identificación, dirección y contacto) es veraz. Cualquier error u omisión en los datos proporcionados es responsabilidad exclusiva del firmante."),
                     
-                    _sectionTitle("3. Registro Fotográfico"),
-                    _bodyText("Como medida de seguridad y evidencia del estado del servicio, se capturarán fotografías del local o fachada. Estas imágenes son para uso exclusivo de respaldo contractual."),
+                    _sectionTitle("3. Registro Fotográfico y Evidencia"),
+                    _bodyText("Como medida de seguridad, transparencia y evidencia del estado del servicio, se capturarán fotografías del local, fachada o activos. Estas imágenes son para uso exclusivo de respaldo contractual y auditoría."),
                     
-                    _sectionTitle("4. Firma Digital"),
-                    _bodyText("La firma estampada en la pantalla táctil tiene validez legal como aceptación de las cláusulas aquí descritas, conforme a las leyes de comercio electrónico y firma digital vigentes."),
+                    _sectionTitle("4. Validez de la Firma Digital"),
+                    _bodyText("La firma estampada en la pantalla electrónica tiene plena validez legal como aceptación de las cláusulas aquí descritas, conforme a la normativa vigente de comercio electrónico y firmas digitales."),
                     
-                    _sectionTitle("5. Exonera de Responsabilidad"),
-                    _bodyText("Contract Manager es una herramienta de gestión contable. El desarrollador no interviene en la relación contractual ni se hace responsable por incumplimientos entre las partes."),
+                    _sectionTitle("5. Exoneración de Responsabilidad"),
+                    _bodyText("ContractFlow es una herramienta de gestión. El desarrollador no interviene en la relación comercial ni se hace responsable por incumplimientos contractuales entre el prestador y el cliente."),
                     
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 40),
+                    const Center(
+                      child: Text(
+                        "Al marcar la casilla de aceptación en el formulario anterior, usted confirma que ha leído y aceptado estos términos.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
             ),
             
-            // Botón de cierre
+            // Botón de cierre con diseño Indigo
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(25),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
+                ]
+              ),
               child: SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: Colors.indigo,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    elevation: 0,
                   ),
-                  child: const Text("ENTIENDO Y CONTINUAR", 
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text("HE LEÍDO Y ENTIENDO", 
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
             ),
@@ -78,11 +111,13 @@ class TermsAndConditionsScreen extends StatelessWidget {
     );
   }
 
-  // Widgets auxiliares para no repetir código y mantener orden
   Widget _sectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(top: 15, bottom: 5),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.blueAccent)),
+      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      child: Text(
+        title.toUpperCase(), 
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo, letterSpacing: 0.8)
+      ),
     );
   }
 
@@ -90,7 +125,7 @@ class TermsAndConditionsScreen extends StatelessWidget {
     return Text(
       text,
       textAlign: TextAlign.justify,
-      style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+      style: TextStyle(fontSize: 14, color: Colors.grey[800], height: 1.6),
     );
   }
 }

@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../services/database_service.dart';
 import '../admin/terms_editor_screen.dart';
 
+/// Pantalla para registrar un nuevo cliente y capturar su firma/foto.
+/// Permite la asignación manual por parte de un Admin o captura automática por el Worker.
 class AddClientScreen extends StatefulWidget {
   final String? adminAssignId;
   final String? adminAssignName;
@@ -25,29 +27,39 @@ class _AddClientScreenState extends State<AddClientScreen> {
   bool _acceptedTerms = false;
   bool _isLoading = false;
 
-  final SignatureController _signatureController = SignatureController(
-    penStrokeWidth: 3,
-    penColor: Colors.black,
-    exportBackgroundColor: Colors.white,
-  );
+  // Controlador para el pad de firma
+  late final SignatureController _signatureController;
 
-  // Cambio clave: Iniciamos en null para que el StreamBuilder asigne el primero disponible
   String? _selectedContractType;
+
+  @override
+  void initState() {
+    super.initState();
+    _signatureController = SignatureController(
+      penStrokeWidth: 3,
+      penColor: Colors.black,
+      exportBackgroundColor: Colors.white,
+    );
+  }
 
   @override
   void dispose() {
     _signatureController.dispose();
     _nameController.dispose();
     _idController.dispose();
-    for (var controller in _addressControllers) {controller.dispose(); }
+    for (var controller in _addressControllers) {
+      controller.dispose(); 
+    }
     super.dispose();
   }
 
-  // --- LÓGICA DE MEDIA ---
+  // --- LÓGICA DE CAPTURA DE IMAGEN ---
   Future<void> _takePhoto() async {
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.camera,
-      maxWidth: 600, maxHeight: 600, imageQuality: 30,
+      maxWidth: 800, // Un poco más de resolución para legibilidad
+      maxHeight: 800, 
+      imageQuality: 50, // Balance entre peso y nitidez
     );
     if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
@@ -63,30 +75,41 @@ class _AddClientScreenState extends State<AddClientScreen> {
     }
   }
 
-  // --- GUARDADO FINAL OPTIMIZADO ---
+  // --- PERSISTENCIA EN FIREBASE ---
   void _saveContract() async {
     final name = _nameController.text.trim();
     final clientId = _idController.text.trim();
 
-    // Validaciones rápidas
+    // Validaciones de seguridad
     if (_imageFile == null) return _showMsg("Es obligatoria la foto de evidencia");
-    if (!_acceptedTerms) return _showMsg("Debe aceptar los términos");
-    if (_signatureController.isEmpty) return _showMsg("El cliente debe firmar");
-    if (name.length < 3 || clientId.length < 5) return _showMsg("Datos principales incompletos");
-    if (_selectedContractType == null) return _showMsg("Debe seleccionar un tipo de contrato");
+    if (!_acceptedTerms) return _showMsg("Debe aceptar los términos legales");
+    if (_signatureController.isEmpty) return _showMsg("El cliente debe firmar el documento");
+    if (name.length < 3 || clientId.length < 5) return _showMsg("Datos principales insuficientes");
+    if (_selectedContractType == null) return _showMsg("Seleccione un tipo de contrato");
 
     setState(() => _isLoading = true);
 
     try {
+      // Exportar firma a bytes
       final signatureBytes = await _signatureController.toPngBytes();
-      List<String> addresses = _addressControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
+      
+      // Limpiar direcciones vacías
+      List<String> addresses = _addressControllers
+          .map((c) => c.text.trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
+
+      if (addresses.isEmpty) {
+        setState(() => _isLoading = false);
+        return _showMsg("Debe ingresar al menos una dirección");
+      }
 
       await DatabaseService().saveClient(
         manualWorkerId: widget.adminAssignId,    
         manualWorkerName: widget.adminAssignName,
         name: name,
         clientId: clientId,
-        contractType: _selectedContractType!, // Ya validado que no es null
+        contractType: _selectedContractType!, 
         addresses: addresses,
         signatureBase64: signatureBytes != null ? base64Encode(signatureBytes) : '',
         photoFile: _imageFile,
@@ -95,26 +118,36 @@ class _AddClientScreenState extends State<AddClientScreen> {
 
       if (mounted) {
         Navigator.pop(context);
-        _showMsg("Contrato vinculado y guardado exitosamente");
+        _showMsg("✅ Contrato guardado exitosamente");
       }
     } catch (e) {
-      _showMsg("Error al guardar: $e");
+      _showMsg("❌ Error al guardar: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _showMsg(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating)
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text("Nuevo Contrato"), elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
+      appBar: AppBar(
+        title: const Text("Nuevo Registro"), 
+        elevation: 0, 
+        backgroundColor: Colors.white, 
+        foregroundColor: Colors.black
+      ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [CircularProgressIndicator(), SizedBox(height: 20), Text("Subiendo información...")],
+          ))
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -124,10 +157,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
                 _buildPhotoBox(),
                 
                 const SizedBox(height: 25),
-                _sectionTitle("Datos Principales"),
-                _buildInput("Nombre Completo / Empresa", _nameController, Icons.person),
+                _sectionTitle("Datos del Cliente"),
+                _buildInput("Nombre o Razón Social", _nameController, Icons.business),
                 const SizedBox(height: 15),
-                _buildInput("Cédula / NIT", _idController, Icons.badge),
+                _buildInput("Identificación (NIT/CC)", _idController, Icons.badge),
                 
                 const SizedBox(height: 25),
                 _buildAddressHeader(),
@@ -140,43 +173,46 @@ class _AddClientScreenState extends State<AddClientScreen> {
                 _buildTermsSection(),
 
                 const SizedBox(height: 30),
-                _sectionTitle("Firma del Cliente"),
+                _sectionTitle("Firma Autorizada"),
                 _buildSignaturePad(),
                 
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: () => _signatureController.clear(),
-                    icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-                    label: const Text("Limpiar Firma", style: TextStyle(color: Colors.redAccent)),
+                    icon: const Icon(Icons.refresh, color: Colors.orange),
+                    label: const Text("Reintentar Firma", style: TextStyle(color: Colors.orange)),
                   ),
                 ),
                 
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
                 _buildSubmitButton(),
+                const SizedBox(height: 40),
               ],
             ),
           ),
     );
   }
 
-  // --- COMPONENTES MODULARES ---
+  // --- COMPONENTES VISUALES ---
 
   Widget _sectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+      child: Text(title.toUpperCase(), 
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.1)),
     );
   }
 
   Widget _buildInput(String label, TextEditingController controller, IconData icon) {
     return TextField(
       controller: controller,
+      textCapitalization: TextCapitalization.words,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blueAccent),
+        prefixIcon: Icon(icon, color: Colors.indigo),
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: Colors.grey[100],
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       ),
     );
@@ -185,18 +221,23 @@ class _AddClientScreenState extends State<AddClientScreen> {
   Widget _buildPhotoBox() {
     return InkWell(
       onTap: _takePhoto,
+      borderRadius: BorderRadius.circular(15),
       child: Container(
-        height: 160,
+        height: 180,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.grey[50],
+          color: Colors.grey[100],
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: _imageFile == null ? Colors.blueAccent.withValues(alpha: 0.5) : Colors.green, width: 2),
+          border: Border.all(
+            color: _imageFile == null ? Colors.indigo.withOpacity(0.2) : Colors.green, 
+            width: 2, 
+            style: _imageFile == null ? BorderStyle.solid : BorderStyle.solid
+          ),
         ),
         child: _imageFile == null 
           ? const Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [Icon(Icons.camera_alt, size: 40, color: Colors.blueAccent), Text("Tomar foto del local")],
+              children: [Icon(Icons.add_a_photo_outlined, size: 45, color: Colors.indigo), Text("Capturar local o aviso")],
             )
           : ClipRRect(borderRadius: BorderRadius.circular(13), child: Image.file(_imageFile!, fit: BoxFit.cover)),
       ),
@@ -207,16 +248,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Expanded(
-          child: Text(
-            "Direcciones de Servicio", 
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        _sectionTitle("Sedes / Direcciones"),
         IconButton(
           onPressed: _addAddressField, 
-          icon: const Icon(Icons.add_circle, color: Colors.blueAccent)
+          icon: const Icon(Icons.add_circle_outline, color: Colors.indigo)
         ),
       ],
     );
@@ -229,44 +264,38 @@ class _AddClientScreenState extends State<AddClientScreen> {
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
           children: [
-            Expanded(child: _buildInput("Dirección ${idx + 1}", entry.value, Icons.location_on)),
+            Expanded(child: _buildInput("Dirección #${idx + 1}", entry.value, Icons.location_on_outlined)),
             if (_addressControllers.length > 1)
-              IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent), onPressed: () => _removeAddressField(idx)),
+              IconButton(
+                icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent), 
+                onPressed: () => _removeAddressField(idx)
+              ),
           ],
         ),
       );
     }).toList();
   }
 
-  // MÉTODO ACTUALIZADO: Dropdown Dinámico desde Firebase
   Widget _buildContractDropdown() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: DatabaseService().getTemplatesStream(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const LinearProgressIndicator();
-        }
+        if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
 
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Text(
-            "Error: No hay plantillas configuradas en el Admin", 
-            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
-          );
+          return const Text("⚠️ No hay tipos de contrato definidos.", style: TextStyle(color: Colors.red));
         }
 
-        // Extraer títulos
         final dynamicTypes = snapshot.data!.map((t) => t['title'] as String).toList();
-
-        // Si no hay nada seleccionado aún, tomamos el primero
         _selectedContractType ??= dynamicTypes.first;
 
         return DropdownButtonFormField<String>(
           initialValue: _selectedContractType,
           decoration: InputDecoration(
-            labelText: "Tipo de Contrato",
+            labelText: "Seleccionar Plantilla de Contrato",
             filled: true, 
-            fillColor: Colors.grey[50],
-            prefixIcon: const Icon(Icons.assignment, color: Colors.blueAccent),
+            fillColor: Colors.grey[100],
+            prefixIcon: const Icon(Icons.article_outlined, color: Colors.indigo),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           ),
           items: dynamicTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
@@ -278,33 +307,39 @@ class _AddClientScreenState extends State<AddClientScreen> {
 
   Widget _buildTermsSection() {
     return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.1), // Corrección: Opacity es más estable
+        color: Colors.indigo.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12)
       ),
       child: CheckboxListTile(
         value: _acceptedTerms,
         onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
-        title: const Text("Acepto términos y condiciones", style: TextStyle(fontSize: 14)),
+        title: const Text("El cliente acepta los términos y condiciones", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         subtitle: InkWell(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen())),
-          child: const Text("Ver contrato legal", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 12)),
+          child: const Text("Leer contrato legal completo", style: TextStyle(color: Colors.indigo, decoration: TextDecoration.underline, fontSize: 12)),
         ),
         controlAffinity: ListTileControlAffinity.leading,
+        activeColor: Colors.indigo,
       ),
     );
   }
 
   Widget _buildSignaturePad() {
     return Container(
-      height: 180,
+      height: 200,
       decoration: BoxDecoration(
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(15),
         border: Border.all(color: Colors.grey[300]!),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
-        child: Signature(controller: _signatureController, backgroundColor: Colors.grey[50]!),
+        child: Signature(
+          controller: _signatureController, 
+          backgroundColor: Colors.transparent
+        ),
       ),
     );
   }
@@ -312,15 +347,16 @@ class _AddClientScreenState extends State<AddClientScreen> {
   Widget _buildSubmitButton() {
     return SizedBox(
       width: double.infinity,
-      height: 55,
-      child: ElevatedButton(
-        onPressed: _saveContract,
+      height: 58,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _saveContract,
+        icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+        label: const Text("GUARDAR REGISTRO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blueAccent,
+          backgroundColor: Colors.indigo,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          elevation: 0
+          elevation: 2
         ),
-        child: const Text("FINALIZAR Y GUARDAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ),
     );
   }

@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // 1. Importar Firebase Auth
+import 'package:firebase_auth/firebase_auth.dart';
 import './admin_dashboard.dart'; 
 import './user_dashboard.dart';
 
+/// Pantalla puente que alterna entre vistas según el rol del usuario.
+/// 
+/// Actúa como un contenedor principal que diferencia visualmente la interfaz
+/// para administradores y trabajadores, gestionando además el estado de la sesión.
 class HomeScreen extends StatelessWidget {
   final String mockRole;
+  
   const HomeScreen({super.key, required this.mockRole});
 
-  // 2. Función optimizada para cerrar sesión
+  /// Realiza el cierre de sesión en Firebase y limpia el historial de navegación.
   Future<void> _logout(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
-      // El AuthWrapper en main.dart se encargará de enviarte al Login automáticamente.
-      // Pero por seguridad, limpiamos el stack de navegación:
+      
       if (!context.mounted) return;
-      // Esto limpia la pantalla y te manda al login
+
+      // Reinicia el flujo de la aplicación hacia la pantalla de login
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     } catch (e) {
       debugPrint("Error al cerrar sesión: $e");
@@ -23,24 +28,25 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("Cargando Home con rol: $mockRole");
+    // Identificamos si el perfil es administrativo
+    final bool isAdmin = mockRole == 'admin';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(mockRole == 'admin' ? "Panel Admin" : "Mis Contratos"),
-        backgroundColor: mockRole == 'admin' ? Colors.indigo : Colors.blueAccent, // Diferenciación visual
+        title: Text(isAdmin ? "Panel Administrativo" : "Mis Contratos"),
+        centerTitle: true,
+        backgroundColor: isAdmin ? Colors.indigo : Colors.blueAccent,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              _logout(context);
-            },
+            tooltip: "Cerrar Sesión",
+            icon: const Icon(Icons.logout),
+            onPressed: () => _logout(context),
           ),
         ],
       ),
-      // Mantenemos la lógica de dashboards
-      body: mockRole == 'admin' ? const AdminDashboard() : const UserDashboard(),
+      // Inyección dinámica del dashboard correspondiente al rol
+      body: isAdmin ? const AdminDashboard() : const UserDashboard(),
     );
   }
 }

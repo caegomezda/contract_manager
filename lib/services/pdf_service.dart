@@ -8,68 +8,135 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class PdfService {
-  // --- GENERADOR DE BYTES (Con fix de fuentes Unicode) ---
+  // --- GENERADOR DE BYTES ---
   static Future<Uint8List> _generatePdfBytes(Map<String, dynamic> clientData, String termsBody) async {
     final pdf = pw.Document();
 
-    // Usamos fuentes que soportan Unicode para evitar los errores de Helvetica
+    // Cargamos fuentes robustas para evitar errores de codificación
     final font = await PdfGoogleFonts.robotoRegular();
     final fontBold = await PdfGoogleFonts.robotoBold();
 
+    // Procesamos el cuerpo reemplazando las variables dinámicas
     String processedBody = termsBody
         .replaceAll('{{nombre}}', clientData['name'] ?? 'N/A')
         .replaceAll('{{id}}', clientData['client_id'] ?? 'N/A')
         .replaceAll('{{contrato}}', clientData['contract_type'] ?? 'N/A')
+        .replaceAll('{{direcciones}}', clientData['address'] ?? 'N/A')
         .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0]);
 
+    // Decodificar firma desde Base64
     Uint8List? signatureBytes;
     if (clientData['signature_path'] != null && clientData['signature_path'].isNotEmpty) {
       try {
         signatureBytes = base64Decode(clientData['signature_path']);
       } catch (e) {
-        debugPrint("Error firma: $e");
+        debugPrint("Error decodificando firma: $e");
       }
     }
 
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.letter,
-        // Aplicamos el tema de fuentes para que no falle con tildes o ñ
         theme: pw.ThemeData.withFont(base: font, bold: fontBold),
         build: (pw.Context context) {
-          return pw.Padding(
-            padding: const pw.EdgeInsets.all(20),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text("CONTRATO DE PRESTACIÓN DE SERVICIOS",
-                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                pw.Divider(thickness: 2),
-                pw.SizedBox(height: 15),
-                pw.Text("DATOS DEL CLIENTE", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
-                pw.Text("Nombre: ${clientData['name']}"),
-                pw.Text("Identificación: ${clientData['client_id']}"),
-                pw.Text("Tipo de Contrato: ${clientData['contract_type']}"),
-                pw.SizedBox(height: 25),
-                pw.Text("TÉRMINOS Y CONDICIONES", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
-                pw.SizedBox(height: 10),
-                pw.Text(processedBody, style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.justify),
-                pw.Spacer(), 
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Encabezado Profesional
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text("Documento Digital # ${DateTime.now().millisecondsSinceEpoch}", 
+                    style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey500)),
+                ],
+              ),
+              // Cuadro de Datos del Cliente
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Column(children: [
-                      if (signatureBytes != null) pw.Container(height: 80, width: 160, child: pw.Image(pw.MemoryImage(signatureBytes))),
-                      pw.Container(width: 160, decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide())), child: pw.Text("Firma Cliente", textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 9))),
-                    ]),
-                    pw.Column(children: [
-                      pw.SizedBox(height: 80),
-                      pw.Container(width: 160, decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide())), child: pw.Text("Sello Verificación", textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 9))),
-                    ]),
+                    pw.Text("INFORMACIÓN DEL TITULAR", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                    pw.SizedBox(height: 5),
+                    pw.Bullet(text: "Nombre: ${clientData['name']}"),
+                    pw.Bullet(text: "Identificación: ${clientData['client_id']}"),
+                    pw.Bullet(text: "Servicio: ${clientData['contract_type']}"),
+                    pw.Bullet(text: "Dirección: ${clientData['address'] ?? 'No especificada'}"),
                   ],
                 ),
-              ],
-            ),
+              ),
+
+              pw.SizedBox(height: 25),
+              
+              // Cuerpo del Contrato
+              pw.Text("CLÁUSULAS Y CONDICIONES", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+              pw.SizedBox(height: 10),
+              pw.Text(processedBody, 
+                style: const pw.TextStyle(fontSize: 10, lineSpacing: 2), 
+                textAlign: pw.TextAlign.justify),
+              
+              pw.Spacer(), 
+
+              // Área de Firmas
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    children: [
+                      if (signatureBytes != null) 
+                        pw.Container(
+                          height: 70, 
+                          width: 140, 
+                          child: pw.Image(pw.MemoryImage(signatureBytes))
+                        ),
+                      pw.Container(
+                        width: 180, 
+                        decoration: const pw.BoxDecoration( // Añade BoxDecoration aquí
+                          border: pw.Border(top: pw.BorderSide(width: 1)),
+                        ),
+                        padding: const pw.EdgeInsets.only(top: 5),
+                        child: pw.Column(
+                          children: [
+                            pw.Text(clientData['name'].toString().toUpperCase(), 
+                              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                            pw.Text("FIRMA DEL CLIENTE", style: const pw.TextStyle(fontSize: 7)),
+                          ]
+                        )
+                      ),
+                    ],
+                  ),
+                  pw.Column(
+                    children: [
+                      pw.SizedBox(height: 70), // Espacio para sello físico si fuera necesario
+                      pw.Container(
+                        width: 180, 
+                        decoration: pw.BoxDecoration( // El border SIEMPRE dentro de decoration
+                          border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+                        ),
+                        padding: const pw.EdgeInsets.only(top: 5),
+                        child: pw.Column(
+                          children: [
+                            pw.Text("CONTRACTFLOW SYSTEM", 
+                              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                            pw.Text("SELLO DE VERIFICACIÓN DIGITAL", style: const pw.TextStyle(fontSize: 7)),
+                          ]
+                        )
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Center(
+                child: pw.Text("Este documento fue generado electrónicamente y es copia fiel de la voluntad del firmante.",
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              )
+            ],
           );
         },
       ),
@@ -77,14 +144,12 @@ class PdfService {
     return pdf.save();
   }
 
-  // --- MÉTODO PARA DESCARGAR (USANDO CANAL NATIVO) ---
+  // --- MÉTODO PARA DESCARGAR / COMPARTIR ---
   static Future<void> downloadContract(BuildContext context, Map<String, dynamic> clientData, String termsBody) async {
     try {
       final bytes = await _generatePdfBytes(clientData, termsBody);
       final String fileName = 'Contrato_${clientData['name'].toString().replaceAll(' ', '_')}.pdf';
 
-      // Esta función es la más robusta para Android moderno.
-      // Abrirá un diálogo donde el usuario solo da clic en "Guardar en Descargas" o "Drive".
       await Printing.sharePdf(
         bytes: bytes,
         filename: fileName,
@@ -93,8 +158,9 @@ class PdfService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("✅ Selecciona 'Guardar en dispositivo' para finalizar"),
-            backgroundColor: Colors.blueAccent,
+            content: Text("✅ Documento listo para guardar o enviar"),
+            backgroundColor: Colors.indigo,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -110,13 +176,18 @@ class PdfService {
       context,
       MaterialPageRoute(
         builder: (context) => Scaffold(
-          appBar: AppBar(title: const Text("Vista Previa del Contrato"), backgroundColor: Colors.blueAccent),
+          appBar: AppBar(
+            title: const Text("Vista Previa"), 
+            backgroundColor: Colors.indigo,
+            foregroundColor: Colors.white,
+          ),
           body: PdfPreview(
             build: (format) => bytes,
-            allowPrinting: false, // Desactivamos para que no confunda con el otro botón
-            allowSharing: false,  // Desactivamos para que use exclusivamente tu botón de descarga
+            allowPrinting: true,
+            allowSharing: true,
+            canChangePageFormat: false,
             initialPageFormat: PdfPageFormat.letter,
-            pdfFileName: 'Contrato_${clientData['name']}.pdf',
+            pdfFileName: 'Preview_${clientData['name']}.pdf',
           ),
         ),
       ),

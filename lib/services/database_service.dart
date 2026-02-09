@@ -1,5 +1,4 @@
 // ignore_for_file: avoid_print
-
 import 'dart:io';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,8 +8,8 @@ import 'package:flutter/material.dart';
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
-  // --- GESTIÓN DE CLIENTES ---
+
+  // --- GESTIÓN DE CLIENTES (FIRMAS Y CONTRATOS) ---
 
   Future<void> saveClient({
     String? id,
@@ -24,15 +23,15 @@ class DatabaseService {
     File? photoFile,
     required bool termsAccepted,
   }) async {
-    String? photoBase64;
     final User? currentUser = _auth.currentUser;
+    String? photoBase64;
 
-    // 1. Procesamiento de imagen a Base64 si existe
+    // 1. Procesamiento de imagen a Base64
     if (photoFile != null) {
       photoBase64 = await _processPhotoToBase64(photoFile);
     }
 
-    // 2. Preparación del mapa de datos
+    // 2. Estructura de datos del cliente
     final Map<String, dynamic> clientData = {
       'name': name,
       'client_id': clientId,
@@ -47,22 +46,38 @@ class DatabaseService {
       clientData['photo_data_base64'] = photoBase64;
     }
 
-    // --- LÓGICA DE VINCULACIÓN DE TRABAJADOR ---
-    if (id == null || id.isEmpty) {
-      // CASO NUEVO: Si no hay ID de documento, asignamos dueño
-      clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
-      clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Sin Nombre');
-      
-      await _db.collection('clients').doc(clientId).set(clientData);
-    } else {
-      // CASO ACTUALIZACIÓN: Solo sobreescribimos worker_id si se pasa explícitamente
-      // Esto evita que el Admin se convierta en el dueño al editar.
-      if (manualWorkerId != null) {
-        clientData['worker_id'] = manualWorkerId;
-        clientData['worker_name'] = manualWorkerName;
-      }
-      
-      await _db.collection('clients').doc(id).update(clientData);
+    // --- LÓGICA DE VINCULACIÓN Y TRANSACCIÓN ---
+    try {
+      await _db.runTransaction((transaction) async {
+        // Referencia al documento del cliente
+        DocumentReference clientRef = _db.collection('clients').doc(id ?? clientId);
+        
+        // Referencia a la plantilla para aumentar el contador de usos
+        QuerySnapshot templateQuery = await _db.collection('templates')
+            .where('title', isEqualTo: contractType)
+            .limit(1)
+            .get();
+
+        if (id == null || id.isEmpty) {
+          // Si es nuevo cliente, asignamos el trabajador
+          clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
+          clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
+          transaction.set(clientRef, clientData);
+
+          // Si encontramos la plantilla, aumentamos su contador de firmas
+          if (templateQuery.docs.isNotEmpty) {
+            transaction.update(templateQuery.docs.first.reference, {
+              'client_count': FieldValue.increment(1)
+            });
+          }
+        } else {
+          // Si es actualización
+          transaction.update(clientRef, clientData);
+        }
+      });
+    } catch (e) {
+      debugPrint("Error en transacción de guardado: $e");
+      rethrow;
     }
   }
 
@@ -75,85 +90,71 @@ class DatabaseService {
     }
   }
 
+  // Stream para que el operario vea sus últimos clientes registrados
   Stream<List<Map<String, dynamic>>> getClientsStream() {
     String? uid = _auth.currentUser?.uid;
     return _db.collection('clients')
         .where('worker_id', isEqualTo: uid)
         .orderBy('updated_at', descending: true)
-        .snapshots(includeMetadataChanges: true) 
+        .limit(20) 
+        .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) {
               final data = doc.data();
               data['id'] = doc.id; 
-              data['is_local'] = doc.metadata.hasPendingWrites;
               return data;
             }).toList());
   }
 
   // --- GESTIÓN DE PLANTILLAS (ADMIN) ---
 
-  Future<void> saveContractTemplate(String title, String body) async {
-    final docId = title.toLowerCase().replaceAll(' ', '_');
-    await _db.collection('templates').doc(docId).set({
-      'title': title,
-      'body': body,
-      'last_edit': FieldValue.serverTimestamp(),
-    });
-  }
-
   Stream<List<Map<String, dynamic>>> getTemplatesStream() {
     return _db.collection('templates')
+        // Quitamos el orderBy temporalmente para verificar si es el error del índice
+        // O lo dejamos pero aseguramos que el documento exista
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) {
-              final data = doc.data();
-              data['id'] = doc.id;
-              return data;
-            }).toList());
-  }
-
-  Future<DocumentSnapshot> getTemplate(String templateId) {
-    return _db.collection('templates').doc(templateId).get();
-  }
-
-  Future<Map<String, dynamic>?> getTemplateByTitle(String title) async {
-    try {
-      final query = await _db
-          .collection('templates')
-          .where('title', isEqualTo: title)
-          .limit(1)
-          .get();
-
-      if (query.docs.isNotEmpty) {
-        return query.docs.first.data();
-      }
-      return null;
-    } catch (e) {
-      debugPrint("Error buscando plantilla: $e");
-      return null;
-    }
+        .map((snapshot) {
+          final docs = snapshot.docs.map((doc) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            return data;
+          }).toList();
+          
+          // Ordenamos manualmente en memoria para evitar errores de índice en Firebase
+          docs.sort((a, b) {
+            final aTime = (a['updated_at'] as Timestamp?)?.toDate() ?? DateTime(2000);
+            final bTime = (b['updated_at'] as Timestamp?)?.toDate() ?? DateTime(2000);
+            return bTime.compareTo(aTime); // Descendente
+          });
+          
+          return docs;
+        });
   }
 
   Future<void> saveTemplate({String? id, required String title, required String body}) async {
     try {
-      // El mapa de datos que vamos a enviar
       final Map<String, dynamic> data = {
         'title': title,
         'body': body,
-        'lastUpdate': FieldValue.serverTimestamp(),
-        'client_count': id == null ? 0 : null,
+        'updated_at': FieldValue.serverTimestamp(),
       };
 
       if (id == null || id.isEmpty) {
-        // Si es nueva plantilla, usamos .add()
+        data['client_count'] = 0; // Inicializamos contador
         await _db.collection('templates').add(data);
       } else {
-        // Si ya tiene ID, usamos .doc(id).set() o .update()
-        await _db.collection('templates').doc(id).set(data, SetOptions(merge: true));
+        await _db.collection('templates').doc(id).update(data);
       }
-      print("Guardado exitoso en Firebase");
     } catch (e) {
-      print("Error detallado en DatabaseService: $e");
-      rethrow; // Para que el UI capture el error y lo muestre
+      print("Error en saveTemplate: $e");
+      rethrow;
     }
   }
 
+  Future<Map<String, dynamic>?> getTemplateByTitle(String title) async {
+    final query = await _db.collection('templates')
+        .where('title', isEqualTo: title)
+        .limit(1)
+        .get();
+    return query.docs.isNotEmpty ? query.docs.first.data() : null;
+  }
 }
