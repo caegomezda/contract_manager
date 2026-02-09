@@ -9,7 +9,6 @@ class DatabaseService {
   
   // --- GESTIÓN DE CLIENTES ---
 
-  /// Crea o actualiza un cliente vinculándolo automáticamente al usuario actual
   Future<void> saveClient({
     String? id,
     String? manualWorkerName, 
@@ -28,13 +27,9 @@ class DatabaseService {
     // 1. Procesamiento de imagen a Base64 si existe
     if (photoFile != null) {
       photoBase64 = await _processPhotoToBase64(photoFile);
-      // Opcional: eliminar archivo temporal local para ahorrar espacio
-      if (await photoFile.exists()) {
-        await photoFile.delete();
-      }
     }
 
-    // 2. Preparación del mapa de datos con vinculación de usuario
+    // 2. Preparación del mapa de datos
     final Map<String, dynamic> clientData = {
       'name': name,
       'client_id': clientId,
@@ -43,57 +38,56 @@ class DatabaseService {
       'signature_path': signatureBase64,
       'terms_accepted': termsAccepted,
       'updated_at': FieldValue.serverTimestamp(),
-      
-      // VINCULACIÓN CRUCIAL:
-      'worker_id': manualWorkerId ?? currentUser?.uid,
-      'worker_name': manualWorkerName ?? (currentUser?.displayName ?? 'Sin Nombre'),
     };
 
     if (photoBase64 != null) {
       clientData['photo_data_base64'] = photoBase64;
     }
 
-    // 3. Escritura en Firestore
+    // --- LÓGICA DE VINCULACIÓN DE TRABAJADOR ---
     if (id == null || id.isEmpty) {
-      // Nuevo cliente: Usamos el ID del cliente como nombre de documento
+      // CASO NUEVO: Si no hay ID de documento, asignamos dueño
+      clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
+      clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Sin Nombre');
+      
       await _db.collection('clients').doc(clientId).set(clientData);
     } else {
-      // Actualización: Usamos el ID interno de Firestore
+      // CASO ACTUALIZACIÓN: Solo sobreescribimos worker_id si se pasa explícitamente
+      // Esto evita que el Admin se convierta en el dueño al editar.
+      if (manualWorkerId != null) {
+        clientData['worker_id'] = manualWorkerId;
+        clientData['worker_name'] = manualWorkerName;
+      }
+      
       await _db.collection('clients').doc(id).update(clientData);
     }
   }
 
-  /// Convierte imagen a String para almacenamiento directo en documento (límite 1MB)
   Future<String?> _processPhotoToBase64(File file) async {
     try {
       final bytes = await file.readAsBytes();
       return base64Encode(bytes);
     } catch (e) {
-      // ignore: avoid_print
-      print("Error procesando imagen: $e");
       return null;
     }
   }
 
-  /// Escucha en tiempo real los clientes del usuario actual
   Stream<List<Map<String, dynamic>>> getClientsStream() {
     String? uid = _auth.currentUser?.uid;
-    
     return _db.collection('clients')
-        .where('worker_id', isEqualTo: uid) // Filtro de pertenencia
-        .orderBy('updated_at', descending: true) // Los más recientes primero
+        .where('worker_id', isEqualTo: uid)
+        .orderBy('updated_at', descending: true)
         .snapshots(includeMetadataChanges: true) 
         .map((snapshot) => snapshot.docs.map((doc) {
               final data = doc.data();
               data['id'] = doc.id; 
-              data['is_local'] = doc.metadata.hasPendingWrites; // Bandera para icono de sincronización
+              data['is_local'] = doc.metadata.hasPendingWrites;
               return data;
             }).toList());
   }
 
   // --- GESTIÓN DE PLANTILLAS (ADMIN) ---
 
-  /// Guarda plantillas de contratos legales
   Future<void> saveContractTemplate(String title, String body) async {
     final docId = title.toLowerCase().replaceAll(' ', '_');
     await _db.collection('templates').doc(docId).set({
@@ -103,7 +97,6 @@ class DatabaseService {
     });
   }
 
-  /// Obtiene el Stream de todas las plantillas para el Administrador
   Stream<List<Map<String, dynamic>>> getTemplatesStream() {
     return _db.collection('templates')
         .snapshots()
@@ -114,7 +107,6 @@ class DatabaseService {
             }).toList());
   }
 
-  /// Obtiene una plantilla específica por ID
   Future<DocumentSnapshot> getTemplate(String templateId) {
     return _db.collection('templates').doc(templateId).get();
   }

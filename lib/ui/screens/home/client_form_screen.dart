@@ -25,10 +25,8 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     'Mantenimiento'
   ];
 
-  // Controladores principales
   late TextEditingController _nameController;
   late TextEditingController _idController;
-  // Corrección: Lista de controladores para direcciones dinámicas
   List<TextEditingController> _addressControllers = [];
 
   File? _imageFile;
@@ -45,11 +43,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicialización de controladores de texto
     _nameController = TextEditingController(text: widget.existingClient?.name ?? '');
     _idController = TextEditingController(text: widget.existingClient?.clientId ?? '');
 
-    // Inicialización dinámica de direcciones (Corrección Error Undefined Name)
     final existingAddresses = widget.existingClient?.addresses ?? [];
     if (existingAddresses.isEmpty) {
       _addressControllers = [TextEditingController()];
@@ -59,7 +55,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
           .toList();
     }
 
-    // Lógica de contrato inicial
     if (widget.existingClient != null) {
       _selectedContractType = widget.existingClient!.contractType;
       _acceptedTerms = widget.existingClient!.termsAccepted;
@@ -72,7 +67,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   void dispose() {
     _nameController.dispose();
     _idController.dispose();
-    // Limpieza de controladores dinámicos
     for (var controller in _addressControllers) {
       controller.dispose();
     }
@@ -103,221 +97,41 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.existingClient == null ? "Nuevo Cliente" : "Renovar Contrato"),
-        elevation: 0,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  const Text("EVIDENCIA FOTOGRÁFICA",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 10),
-                  _buildPhotoSelector(),
-                  const SizedBox(height: 20),
-                  
-                  _buildTextField(_nameController, "Nombre Completo"),
-                  const SizedBox(height: 15),
-                  _buildTextField(_idController, "Cédula o NIT", isId: true),
-                  
-                  const SizedBox(height: 20),
-                  _buildAddressSection(),
-                  
-                  const SizedBox(height: 20),
-                  _buildContractDropdown(),
-                  
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  _buildTermsTile(),
-
-                  const SizedBox(height: 20),
-                  const Text("FIRMA DEL CLIENTE",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 10),
-                  _buildSignaturePad(),
-                  
-                  _buildSignatureClearButton(),
-
-                  const SizedBox(height: 30),
-                  _buildSaveButton(),
-                  
-                  if (_imageFile == null)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8.0),
-                      child: Text("* La foto es obligatoria para continuar",
-                          style: TextStyle(color: Colors.red, fontSize: 11), textAlign: TextAlign.center),
-                    )
-                ],
-              ),
-            ),
-    );
-  }
-
-  // --- WIDGETS MODULARIZADOS ---
-
-  Widget _buildTextField(TextEditingController controller, String label, {bool isId = false}) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-      validator: (value) {
-        if (value == null || value.isEmpty) return "Campo obligatorio";
-        if (isId && value.length < 5) return "ID demasiado corto";
-        return null;
-      },
-    );
-  }
-
-  Widget _buildAddressSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text("DIRECCIONES", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-            TextButton.icon(onPressed: _addAddressField, icon: const Icon(Icons.add), label: const Text("Añadir"))
-          ],
-        ),
-        ..._addressControllers.asMap().entries.map((entry) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: entry.value,
-                    decoration: InputDecoration(labelText: "Dirección ${entry.key + 1}", border: const OutlineInputBorder()),
-                  ),
-                ),
-                if (_addressControllers.length > 1)
-                  IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _removeAddressField(entry.key)),
-              ],
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildContractDropdown() {
-    return DropdownButtonFormField<String>(
-      // Corrección de acceso a widget y lógica de valor inicial
-      initialValue: _selectedContractType != null && _contractTypes.contains(_selectedContractType)
-          ? _selectedContractType
-          : _contractTypes.first,
-      decoration: InputDecoration(
-        labelText: "Tipo de Contrato",
-        filled: true,
-        fillColor: Colors.grey[50],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      items: _contractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-      onChanged: (val) => setState(() => _selectedContractType = val),
-    );
-  }
-
-  Widget _buildTermsTile() {
-    return CheckboxListTile(
-      value: _acceptedTerms,
-      onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
-      title: const Text("Acepto los Términos y Condiciones"),
-      subtitle: GestureDetector(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsEditorScreen())),
-        child: const Text("Ver términos legales aquí",
-            style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontWeight: FontWeight.bold)),
-      ),
-      controlAffinity: ListTileControlAffinity.leading,
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-
-  Widget _buildPhotoSelector() {
-    return GestureDetector(
-      onTap: _takePhoto,
-      child: Container(
-        height: 180,
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-          // Actualizado: withValues en lugar de withOpacity
-          border: Border.all(color: _imageFile == null ? Colors.orange : Colors.green, width: 2),
-        ),
-        child: _imageFile == null
-            ? const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [Icon(Icons.camera_alt, size: 50, color: Colors.orange), Text("Tomar Foto")],
-              )
-            : ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(_imageFile!, fit: BoxFit.cover)),
-      ),
-    );
-  }
-
-  Widget _buildSignaturePad() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[400]!),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Signature(
-          controller: _signatureController,
-          height: 180,
-          backgroundColor: Colors.grey[50]!,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSignatureClearButton() {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: TextButton.icon(
-        onPressed: () => _signatureController.clear(),
-        icon: const Icon(Icons.clear, color: Colors.red, size: 18),
-        label: const Text("Limpiar firma", style: TextStyle(color: Colors.red)),
-      ),
-    );
-  }
-
-  Widget _buildSaveButton() {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.green,
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        disabledBackgroundColor: Colors.grey[300],
-      ),
-      onPressed: (_acceptedTerms && _imageFile != null) ? _saveData : null,
-      child: const Text("GUARDAR CONTRATO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  Future<void> _saveData() async {
+Future<void> _saveData() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_signatureController.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Falta la firma del cliente")));
+    
+    // Si es un cliente nuevo, la firma es obligatoria. 
+    // Si es una edición, puede usar la que ya existe.
+    if (_signatureController.isEmpty && widget.existingClient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Falta la firma del cliente")),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
+    
     try {
-      final signatureBytes = await _signatureController.toPngBytes();
-      final String signatureBase64 = signatureBytes != null ? base64Encode(signatureBytes) : "";
-      final List<String> addresses = _addressControllers.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
+      String signatureBase64 = widget.existingClient?.signatureBase64 ?? "";
+      
+      // Si el usuario dibujó algo nuevo en el pad, procesamos esa nueva firma
+      if (_signatureController.isNotEmpty) {
+        final signatureBytes = await _signatureController.toPngBytes();
+        if (signatureBytes != null) {
+          signatureBase64 = base64Encode(signatureBytes);
+        }
+      }
 
+      final List<String> addresses = _addressControllers
+          .map((c) => c.text.trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
+
+      // Llamada al servicio para guardar/actualizar
       await DatabaseService().saveClient(
         id: widget.existingClient?.id,
+        manualWorkerId: widget.existingClient?.workerId,
+        // manualWorkerName: widget.existingClient?.workerName,
         name: _nameController.text.trim(),
         clientId: _idController.text.trim(),
         contractType: _selectedContractType ?? _contractTypes.first,
@@ -328,13 +142,164 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       );
 
       if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: Colors.green, content: Text("Éxito")));
+        // 1. Mostrar mensaje de éxito
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.green, 
+            content: Text("¡Datos actualizados correctamente!"),
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // 2. VOLVER AL LISTADO:
+        // Navigator.pop quita la pantalla actual y vuelve a la anterior (el listado)
+        // LÓGICA DE RETORNO INTELIGENTE
+        if (widget.existingClient != null) {
+          // Si estamos editando, queremos saltar el "Detalle" y volver al listado
+          // Esto cierra el formulario Y la pantalla de detalle que estaba debajo
+          int count = 0;
+          Navigator.of(context).popUntil((_) => count++ >= 2);
+        } else {
+          // Si es un cliente nuevo, un pop normal es suficiente
+          Navigator.of(context).pop();
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Colors.red, content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red, 
+            content: Text("Error al guardar: $e"),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.existingClient == null ? "Nuevo Cliente" : "Actualizar Cliente")),
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            _buildPhotoSelector(),
+            const SizedBox(height: 20),
+            _buildTextField(_nameController, "Nombre Completo"),
+            const SizedBox(height: 15),
+            _buildTextField(_idController, "Cédula o NIT", isId: true),
+            const SizedBox(height: 20),
+            _buildAddressSection(),
+            const SizedBox(height: 20),
+            _buildContractDropdown(),
+            const SizedBox(height: 10),
+            _buildTermsTile(),
+            const SizedBox(height: 20),
+            const Text("FIRMA DEL CLIENTE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 10),
+            _buildSignaturePad(),
+            _buildSignatureClearButton(),
+            const SizedBox(height: 30),
+            _buildSaveButton(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGETS AUXILIARES (Resumidos para claridad) ---
+  Widget _buildTextField(TextEditingController controller, String label, {bool isId = false}) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      validator: (val) => (val == null || val.isEmpty) ? "Campo obligatorio" : null,
+    );
+  }
+
+  Widget _buildPhotoSelector() {
+    return GestureDetector(
+      onTap: _takePhoto,
+      child: Container(
+        height: 150,
+        decoration: BoxDecoration(
+          color: Colors.grey[100], 
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _imageFile == null && widget.existingClient == null ? Colors.orange : Colors.green)
+        ),
+        child: _imageFile != null 
+          ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_imageFile!, fit: BoxFit.cover))
+          : const Center(child: Icon(Icons.camera_alt, size: 40, color: Colors.grey)),
+      ),
+    );
+  }
+
+  Widget _buildAddressSection() {
+    return Column(children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        const Text("DIRECCIONES"), 
+        IconButton(onPressed: _addAddressField, icon: const Icon(Icons.add_circle))
+      ]),
+      ..._addressControllers.asMap().entries.map((e) => Padding(
+        padding: const EdgeInsets.only(bottom: 8.0),
+        child: Row(children: [
+          Expanded(child: TextFormField(controller: e.value, decoration: const InputDecoration(border: OutlineInputBorder()))),
+          IconButton(onPressed: () => _removeAddressField(e.key), icon: const Icon(Icons.delete, color: Colors.red))
+        ]),
+      ))
+    ]);
+  }
+
+  Widget _buildContractDropdown() {
+    return DropdownButtonFormField<String>(
+      initialValue: _selectedContractType,
+      items: _contractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+      onChanged: (val) => setState(() => _selectedContractType = val),
+      decoration: const InputDecoration(labelText: "Tipo de Contrato", border: OutlineInputBorder()),
+    );
+  }
+
+  Widget _buildTermsTile() {
+    return Container(
+      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
+      child: CheckboxListTile(
+        value: _acceptedTerms,
+        onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
+        title: const Text("Acepto términos y condiciones", style: TextStyle(fontSize: 14)),
+        subtitle: InkWell(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen())),
+          child: const Text("Ver contrato legal", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 12)),
+        ),
+        controlAffinity: ListTileControlAffinity.leading,
+      ),
+    );
+  }
+
+  Widget _buildSignaturePad() {
+    return Container(
+      height: 180,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Signature(controller: _signatureController, backgroundColor: Colors.grey[50]!),
+      ),
+    );
+  }
+
+  Widget _buildSignatureClearButton() => Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _signatureController.clear(), child: const Text("Limpiar")));
+
+  Widget _buildSaveButton() => SizedBox(
+    width: double.infinity, 
+    child: ElevatedButton(
+      onPressed: (_acceptedTerms) ? _saveData : null, 
+      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+      child: const Text("GUARDAR", style: TextStyle(color: Colors.white))
+    )
+  );
 }
