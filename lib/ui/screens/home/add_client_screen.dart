@@ -206,8 +206,18 @@ class _AddClientScreenState extends State<AddClientScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text("Direcciones de Servicio", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        IconButton(onPressed: _addAddressField, icon: const Icon(Icons.add_circle, color: Colors.blueAccent)),
+        // Al usar Expanded, el texto respetará el espacio del icono y no causará overflow
+        const Expanded(
+          child: Text(
+            "Direcciones de Servicio", 
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis, // Opcional: añade "..." si el texto es excesivamente largo
+          ),
+        ),
+        IconButton(
+          onPressed: _addAddressField, 
+          icon: const Icon(Icons.add_circle, color: Colors.blueAccent)
+        ),
       ],
     );
   }
@@ -249,7 +259,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
         onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
         title: const Text("Acepto términos y condiciones", style: TextStyle(fontSize: 14)),
         subtitle: InkWell(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsEditorScreen())),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen())),
           child: const Text("Ver contrato legal", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 12)),
         ),
         controlAffinity: ListTileControlAffinity.leading,
