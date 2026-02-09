@@ -60,6 +60,32 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     }
   }
 
+  Future<void> _processAndDownloadPDF(BuildContext context) async {
+    setState(() => _isGenerating = true);
+    try {
+      // 1. Obtener la plantilla (Igual que en la previsualización)
+      String contractTitle = widget.client['contract_type'] ?? 'Servicio Técnico';
+      final templateData = await DatabaseService().getTemplateByTitle(contractTitle);
+      String termsBody = templateData?['body'] ?? "Contrato para {{nombre}}.";
+
+      // 2. Reemplazar variables (Hotkeys)
+      String processedTerms = termsBody
+          .replaceAll('{{nombre}}', widget.client['name'] ?? '')
+          .replaceAll('{{id}}', widget.client['client_id'] ?? '')
+          .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
+          .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
+
+      // 3. DESCARGA REAL con el texto procesado
+      await PdfService.downloadContract(context, widget.client, processedTerms);
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: Colors.red, content: Text("Error al descargar: $e")),
+      );
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -228,16 +254,18 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               backgroundColor: Colors.blueAccent,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            icon: const Icon(Icons.remove_red_eye, color: Colors.white),
-            label: const Text("VER CONTRATO PDF", 
+            label: const Text("VER CONTRATO", 
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ),
         const SizedBox(height: 12),
         TextButton.icon(
-          onPressed: () => PdfService.downloadContract(context, widget.client, "Cuerpo del contrato..."),
+          onPressed: _isGenerating ? null : () async {
+            // LLAMAMOS A UNA FUNCIÓN QUE PROCESE EL TEXTO ANTES DE DESCARGAR
+            await _processAndDownloadPDF(context);
+          },
           icon: const Icon(Icons.download, color: Colors.blueAccent),
-          label: const Text("Descargar archivo"),
+          label: const Text("Descargar"),
         )
       ],
     );
