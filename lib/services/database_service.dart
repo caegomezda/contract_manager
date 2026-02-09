@@ -1,7 +1,10 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -110,4 +113,47 @@ class DatabaseService {
   Future<DocumentSnapshot> getTemplate(String templateId) {
     return _db.collection('templates').doc(templateId).get();
   }
+
+  Future<Map<String, dynamic>?> getTemplateByTitle(String title) async {
+    try {
+      final query = await _db
+          .collection('templates')
+          .where('title', isEqualTo: title)
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.data();
+      }
+      return null;
+    } catch (e) {
+      debugPrint("Error buscando plantilla: $e");
+      return null;
+    }
+  }
+
+  Future<void> saveTemplate({String? id, required String title, required String body}) async {
+    try {
+      // El mapa de datos que vamos a enviar
+      final Map<String, dynamic> data = {
+        'title': title,
+        'body': body,
+        'lastUpdate': FieldValue.serverTimestamp(),
+        'client_count': id == null ? 0 : null,
+      };
+
+      if (id == null || id.isEmpty) {
+        // Si es nueva plantilla, usamos .add()
+        await _db.collection('templates').add(data);
+      } else {
+        // Si ya tiene ID, usamos .doc(id).set() o .update()
+        await _db.collection('templates').doc(id).set(data, SetOptions(merge: true));
+      }
+      print("Guardado exitoso en Firebase");
+    } catch (e) {
+      print("Error detallado en DatabaseService: $e");
+      rethrow; // Para que el UI capture el error y lo muestre
+    }
+  }
+
 }

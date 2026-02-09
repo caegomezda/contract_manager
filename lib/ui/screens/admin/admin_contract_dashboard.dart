@@ -1,3 +1,4 @@
+import 'package:contract_manager/services/database_service.dart';
 import 'package:flutter/material.dart';
 import 'admin_contract_editor.dart';
 
@@ -6,101 +7,94 @@ class AdminContractDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Datos de prueba: En el futuro esto vendrá de Firebase
-    final List<Map<String, dynamic>> templates = [
-      {'title': 'Servicio Técnico', 'clients': 15, 'last_update': '02/02/2026'},
-      {'title': 'Mantenimiento Preventivo', 'clients': 42, 'last_update': '01/02/2026'},
-      {'title': 'Alquiler de Equipos', 'clients': 8, 'last_update': '20/01/2026'},
-    ];
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Gestión de Contratos"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_chart),
-            onPressed: () {
-              // Aquí podrías ver una gráfica de crecimiento
-            },
-          )
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildSummaryHeader(templates),
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text("PLANTILLAS VIGENTES", 
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: templates.length,
-              itemBuilder: (context, i) {
-                final item = templates[i];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: Colors.blueAccent,
-                      child: Icon(Icons.description, color: Colors.white),
-                    ),
-                    title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("Último cambio: ${item['last_update']}"),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text("${item['clients']}", 
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                        const Text("Clientes", style: TextStyle(fontSize: 10)),
-                      ],
-                    ),
-                    onTap: () {
-                      bool tieneClientes = item['clients'] > 0;
-  
-                      Navigator.push(context, MaterialPageRoute(
-                        builder: (context) => AdminContractEditor(
-                          isReadOnly: tieneClientes, // Si ya tiene clientes, NO se puede editar
-                          initialData: item,
+      appBar: AppBar(title: const Text("Gestión de Contratos")),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: DatabaseService().getTemplatesStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          final templates = snapshot.data ?? [];
+
+          return Column(
+            children: [
+              _buildSummaryHeader(templates),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text("PLANTILLAS VIGENTES", 
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: templates.length,
+                  itemBuilder: (context, i) {
+                    final item = templates[i];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Colors.blueAccent,
+                          child: Icon(Icons.description, color: Colors.white),
                         ),
-                      ));
-                    },
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+                        title: Text(item['title'] ?? 'Sin título', 
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (context) => AdminContractEditor(
+                              isReadOnly: false, // Puedes implementar lógica de bloqueo luego
+                              initialData: item,
+                            ),
+                          ));
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractEditor()));
-        },
+        onPressed: () => Navigator.push(context, MaterialPageRoute(
+          builder: (context) => const AdminContractEditor())),
         label: const Text("Nueva Plantilla"),
         icon: const Icon(Icons.note_add),
       ),
     );
   }
 
-  Widget _buildSummaryHeader(List<Map<String, dynamic>> data) {
-    int totalClients = data.fold(0, (sum, item) => sum + (item['clients'] as int));
+  Widget _buildSummaryHeader(List<Map<String, dynamic>> templates) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: Colors.blueAccent,
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blueAccent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(15),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          const Text("Resumen Operativo", style: TextStyle(color: Colors.white70, fontSize: 16)),
-          const SizedBox(height: 8),
-          Text("$totalClients Clientes Activos", 
-            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-          const Text("Vinculados a contratos legales", style: TextStyle(color: Colors.white60, fontSize: 12)),
+          _summaryItem("Plantillas", templates.length.toString(), Icons.layers),
+          _summaryItem(
+            "Total Clientes", 
+            // Suma segura manejando nulos
+            templates.fold<int>(0, (prev, element) => prev + (element['client_count'] as int? ?? 0)).toString(), 
+            Icons.people
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _summaryItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.blueAccent),
+        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
     );
   }
 }
