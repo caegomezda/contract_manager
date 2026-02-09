@@ -160,7 +160,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                     child: ElevatedButton.icon(
                       onPressed: _isSaving ? null : _saveTemplate,
                       icon: const Icon(Icons.cloud_upload, color: Colors.white),
-                      label: const Text("GUARDAR EN FIREBASE", 
+                      label: const Text("GUARDAR", 
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blueAccent,
