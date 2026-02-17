@@ -8,9 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Modelos
 import 'package:contract_manager/data/models/user_model.dart';
 
-// Importaciones de Pantallas (Ajustadas a tu estructura real)
+// Importaciones de Pantallas
 import 'package:contract_manager/ui/screens/home/admin_dashboard.dart';
-import 'package:contract_manager/ui/screens/home/user_dashboard.dart'; // Tu "WorkerHome" se llama UserDashboard
+import 'package:contract_manager/ui/screens/home/user_dashboard.dart'; 
 import 'package:contract_manager/ui/screens/legal/disclaimer_screen.dart';
 import 'package:contract_manager/ui/screens/auth/login_screen.dart';
 import 'package:contract_manager/ui/screens/auth/signup_screen.dart';
@@ -40,7 +40,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Contract Manager',
-      home: const AuthWrapper(), // El Wrapper decide qué pantalla mostrar
+      theme: ThemeData(primarySwatch: Colors.indigo),
+      home: const AuthWrapper(), 
       routes: {
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignUpScreen(),
@@ -85,7 +86,7 @@ class _LegalCheckWrapperState extends State<LegalCheckWrapper> {
   }
 }
 
-// --- AUTH WRAPPER CORREGIDO ---
+// --- AUTH WRAPPER CON GUARDIÁN DE ACCESO ACTUALIZADO ---
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -102,12 +103,15 @@ class AuthWrapper extends StatelessWidget {
 
         final firebaseUser = authSnapshot.data!;
 
-        // Si el email no está verificado, forzamos pantalla de verificación
+        // Verificación de Email
         if (!firebaseUser.emailVerified) return const VerifyEmailScreen();
 
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).snapshots(),
           builder: (context, userSnap) {
+            // Manejo de estados de carga y error de Firestore
+            if (userSnap.hasError) return const LoginScreen();
+
             if (userSnap.connectionState == ConnectionState.waiting) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
@@ -119,19 +123,35 @@ class AuthWrapper extends StatelessWidget {
             final data = userSnap.data!.data() as Map<String, dynamic>;
             final userModel = UserModel.fromMap(data, userSnap.data!.id);
 
-            // 1. Lógica para Admins
-            if (userModel.isSuperAdmin || userModel.role == 'super_admin' || userModel.role == 'admin' || userModel.role == 'supervisor') {
+            // --- NUEVA LÓGICA DE PRIORIDAD Y BLOQUEO ---
+
+            // Calculamos estados de expiración
+            final bool isDateExpired = userModel.authValidUntil == null || 
+                                       DateTime.now().isAfter(userModel.authValidUntil!);
+            
+            final bool needsValidation = data['is_validated'] == false;
+
+            // 1. FILTRO DE SEGURIDAD PARA WORKERS Y SUPERVISORES
+            // Si el rol es 'worker' o 'supervisor', verificamos si está bloqueado.
+            if (userModel.role == 'worker' || userModel.role == 'supervisor') {
+              if (isDateExpired || needsValidation) {
+                return TokenLockScreen(user: userModel);
+              }
+            }
+
+            // 2. REDIRECCIÓN A DASHBOARDS SEGÚN ROL
+            // Solo llegan aquí si:
+            // a) Son Admin/SuperAdmin (siempre pasan)
+            // b) Son Worker/Supervisor con token VÁLIDO.
+            
+            if (userModel.isSuperAdmin || 
+                userModel.role == 'super_admin' || 
+                userModel.role == 'admin' || 
+                userModel.role == 'supervisor') {
               return LegalCheckWrapper(child: AdminDashboard());
             }
 
-            // 2. Lógica para Workers (UserDashboard) con bloqueo de Token
-            final bool isExpired = userModel.authValidUntil == null || 
-                                   DateTime.now().isAfter(userModel.authValidUntil!);
-
-            if (isExpired) {
-              return TokenLockScreen(user: userModel);
-            }
-
+            // Dashboard por defecto para trabajadores validados
             return LegalCheckWrapper(child: const UserDashboard());
           },
         );

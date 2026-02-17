@@ -291,17 +291,25 @@ class DatabaseService {
 
   Future<void> renewUserAccess(String targetUid, int days) async {
     try {
+      // Generamos el nuevo código de 4 dígitos
       final String newCode = (Random().nextInt(8999) + 1000).toString();
+      
+      // Calculamos la fecha de expiración
       final DateTime expiryDate = DateTime.now().add(Duration(days: days));
 
       await _db.collection('users').doc(targetUid).update({
         'auth_code': newCode,
-        'auth_valid_until': expiryDate.toIso8601String(),
+        // Usamos Timestamp de Firestore en lugar de String para poder hacer filtros/queries
+        'auth_valid_until': Timestamp.fromDate(expiryDate), 
+        // Al poner esto en false, obligamos a la App a pedir el código de nuevo
         'is_validated': false, 
         'updated_at': FieldValue.serverTimestamp(),
       });
+      
+      print("Acceso renovado: Código $newCode válido hasta $expiryDate");
     } catch (e) {
       print("Error en renewUserAccess: $e");
+      rethrow; // Es mejor relanzar el error para manejarlo en la UI
     }
   }
 

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
   final String uid;
   final String name;
@@ -30,9 +32,11 @@ class UserModel {
       parentAdminId: data['parent_admin_id'],
       supervisorId: data['supervisor_id'],
       authCode: data['auth_code'],
-      authValidUntil: data['auth_valid_until'] != null 
-          ? DateTime.tryParse(data['auth_valid_until'].toString()) 
-          : null,
+      authValidUntil: data['auth_valid_until'] is Timestamp 
+          ? (data['auth_valid_until'] as Timestamp).toDate() 
+          : data['auth_valid_until'] != null 
+              ? DateTime.tryParse(data['auth_valid_until'].toString()) 
+              : null,
       isSuperAdmin: data['is_super_admin'] ?? false,
     );
   }

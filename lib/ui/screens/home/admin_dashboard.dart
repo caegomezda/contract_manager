@@ -146,7 +146,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
             ),
           ),
-// --- SECCIÓN DE TÍTULO Y BOTÓN DE INVITACIONES ---
+          // --- SECCIÓN DE TÍTULO Y BOTÓN DE INVITACIONES ---
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
@@ -498,7 +498,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
     final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
     final String? accessCode = worker['auth_code']?.toString();
-    final bool isExpired = _checkIfExpired(worker['auth_valid_until']);
+    
+    // 1. LÓGICA DE ROLES ESPECIALES (EXENTOS)
+    final bool isPrivileged = role == 'admin' || role == 'super_admin';
+
+    // 2. LÓGICA DE EXPIRACIÓN (Solo aplica si NO es privilegiado)
+    final bool isValidated = worker['is_validated'] ?? false;
+    final dynamic rawExpiry = worker['auth_valid_until'];
+    DateTime? expiryDate;
+
+    if (rawExpiry is Timestamp) {
+      expiryDate = rawExpiry.toDate();
+    } else if (rawExpiry is String) {
+      expiryDate = DateTime.tryParse(rawExpiry);
+    }
+
+    // Si es privileged, NUNCA está expirado. Si no, evaluamos validación y fecha.
+    final bool isExpired = !isPrivileged && (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
+    
     final String expiryText = _formatDate(worker['auth_valid_until']);
 
     return Container(
@@ -507,7 +524,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02), 
+            blurRadius: 10, 
+            offset: const Offset(0, 4)
+          )
         ],
       ),
       child: ListTile(
@@ -516,27 +537,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
           width: 52,
           height: 52,
           decoration: BoxDecoration(
+            // Si es privilegiado, siempre azul. Si no, depende de isExpired.
             color: isExpired ? Colors.red[50] : Colors.indigo[50],
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(
-              role == 'admin' ? Icons.admin_panel_settings : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person),
-              color: isExpired ? Colors.red : Colors.indigo),
+            role == 'admin' || role == 'super_admin'
+                ? Icons.admin_panel_settings 
+                : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person),
+            color: isExpired ? Colors.red : Colors.indigo,
+          ),
         ),
-        title: Text(worker['name'] ?? 'Usuario',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        title: Row(
+          children: [
+            Text(worker['name'] ?? 'Usuario',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          ],
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
             Text(role.toUpperCase(),
                 style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text("Vence: $expiryText",
-                style: TextStyle(
-                    fontSize: 11,
-                    color: isExpired ? Colors.red : Colors.green[700],
-                    fontWeight: FontWeight.w600)),
+            
+            // Solo mostramos la fecha de vencimiento si NO es un administrador
+            if (!isPrivileged) ...[
+              const SizedBox(height: 4),
+              Text("Vence: $expiryText",
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: isExpired ? Colors.red : Colors.green[700],
+                      fontWeight: FontWeight.w600)),
+            ],
           ],
         ),
         trailing: PopupMenuButton<String>(
@@ -544,11 +577,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (val) => _handleMenuAction(context, val, worker),
           itemBuilder: (context) {
-            // Verificamos el rol del trabajador de esta tarjeta
             final String workerRole = (worker['role'] ?? '').toString().toLowerCase();
-            
-            // Condición: ¿Se puede cambiar el rol? 
-            // No si el objetivo es super_admin O si quien mira es un supervisor
             bool canChangeRole = workerRole != 'super_admin' && currentUserRole != 'supervisor';
 
             return [
@@ -562,7 +591,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               ),
 
-              // OPCIÓN CONDICIONAL: Solo aparece si se cumplen los permisos
               if (canChangeRole)
                 const PopupMenuItem(
                   value: 'change_role',
@@ -574,26 +602,29 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ),
                 ),
 
-              if (accessCode != null && accessCode.toString().isNotEmpty)
+              // Ocultamos "Copiar Código" y "Renovar" para Admins en el menú si quieres limpiar más la UI
+              if (!isPrivileged && accessCode != null && accessCode.isNotEmpty)
                 PopupMenuItem(
                   value: 'copy_code',
                   child: ListTile(
                     leading: const Icon(Icons.content_copy_rounded, color: Colors.blue),
                     title: const Text("Copiar Código", style: TextStyle(fontSize: 14)),
+                    subtitle: Text(accessCode, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                     contentPadding: EdgeInsets.zero,
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
 
-              const PopupMenuItem(
-                value: 'renew',
-                child: ListTile(
-                  leading: Icon(Icons.key_outlined, color: Colors.orange),
-                  title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
+              if (!isPrivileged)
+                const PopupMenuItem(
+                  value: 'renew',
+                  child: ListTile(
+                    leading: Icon(Icons.key_outlined, color: Colors.orange),
+                    title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
-              ),
             ];
           },
         ),
@@ -601,16 +632,28 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
     
-  bool _checkIfExpired(dynamic dateStr) {
-    if (dateStr == null) return true;
-    final expiry = DateTime.tryParse(dateStr.toString());
-    return expiry == null || DateTime.now().isAfter(expiry);
-  }
+  String _formatDate(dynamic dateData) {
+    if (dateData == null) return "SIN ACCESO";
+    
+    try {
+      DateTime? date;
 
-  String _formatDate(dynamic dateStr) {
-    if (dateStr == null) return "SIN ACCESO";
-    final date = DateTime.tryParse(dateStr.toString());
-    return date != null ? DateFormat('dd/MM/yy').format(date) : "ERROR";
+      if (dateData is Timestamp) {
+        // Si es el formato nuevo de Firebase
+        date = dateData.toDate();
+      } else if (dateData is String) {
+        // Si es el formato antiguo de texto
+        date = DateTime.tryParse(dateData);
+      }
+
+      if (date != null) {
+        return DateFormat('dd/MM/yy').format(date);
+      } else {
+        return "ERROR";
+      }
+    } catch (e) {
+      return "ERROR";
+    }
   }
 
   void _showChangeRoleDialog(BuildContext context, Map<String, dynamic> user) {
@@ -733,43 +776,88 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _showRenewDialog(BuildContext context, Map<String, dynamic> user) {
     int selectedDays = 30;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Extender Acceso",
-            style: TextStyle(color: Colors.indigo[900], fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("Selecciona el periodo para ${user['name']}."),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<int>(
-              value: selectedDays,
-              items: const [
-                DropdownMenuItem(value: 7, child: Text("1 Semana")),
-                DropdownMenuItem(value: 30, child: Text("1 Mes")),
-                DropdownMenuItem(value: 365, child: Text("1 Año")),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(
+                "Extender Acceso",
+                style: TextStyle(
+                  color: Colors.indigo[900],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              // USAMOS SingleChildScrollView PARA EVITAR OVERFLOW
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.8, // Ajusta el ancho al 80%
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Selecciona el periodo para ${user['name']}.",
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 20),
+                      DropdownButtonFormField<int>(
+                        isExpanded: true, // Evita overflow horizontal dentro del botón
+                        value: selectedDays,
+                        items: const [
+                          DropdownMenuItem(value: 7, child: Text("1 Semana")),
+                          DropdownMenuItem(value: 30, child: Text("1 Mes")),
+                          DropdownMenuItem(value: 365, child: Text("1 Año")),
+                        ],
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedDays = val!;
+                          });
+                        },
+                        decoration: _inputDecoration(
+                          Icons.calendar_today_outlined, 
+                          "Periodo de acceso"
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("CANCELAR"),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await _db.renewUserAccess(user['uid'], selectedDays);
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Acceso actualizado para ${user['name']}"),
+                        backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  child: const Text("ACTUALIZAR"),
+                ),
               ],
-              onChanged: (val) => selectedDays = val!,
-              decoration: _inputDecoration(Icons.calendar_today_outlined, ""),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
-          ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-              onPressed: () async {
-                await _db.renewUserAccess(user['uid'], selectedDays);
-                if (!context.mounted) return;
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Acceso actualizado")));
-              },
-              child: const Text("ACTUALIZAR")),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 

@@ -88,4 +88,24 @@ class AuthService {
   Future<void> signOut() async {
     await _auth.signOut();
   }
+
+  Future<bool> isAccessValid(String uid) async {
+    try {
+      DocumentSnapshot doc = await _db.collection('users').doc(uid).get();
+      if (!doc.exists) return false;
+
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      
+      // Si no tiene fecha de expiración (usuarios antiguos), le damos acceso o lo forzamos
+      if (data['access_expiration'] == null) return true;
+
+      Timestamp expiration = data['access_expiration'];
+      DateTime now = DateTime.now();
+
+      // Retorna true si la fecha de ahora es ANTES que la de expiración
+      return now.isBefore(expiration.toDate());
+    } catch (e) {
+      return false;
+    }
+  }
 }
