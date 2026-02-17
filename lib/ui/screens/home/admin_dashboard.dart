@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/main.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
 import 'package:contract_manager/services/database_service.dart';
+import 'package:contract_manager/ui/screens/home/user_dashboard.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -761,18 +762,49 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Row(
+                // spaceAround distribuye el espacio de manera equitativa entre los elementos
+                mainAxisAlignment: MainAxisAlignment.spaceAround, 
                 children: [
-                  _topMenuButton(
+                  // Usamos Expanded para que cada botón ocupe el mismo espacio disponible
+                  Expanded(
+                    child: _topMenuButton(
                       context,
                       Icons.description_rounded,
                       "Plantillas",
-                      () => Navigator.push(context,
-                          MaterialPageRoute(builder: (context) => const AdminContractDashboard()))),
-                  const SizedBox(width: 20),
-                  _topMenuButton(context, Icons.person_add_alt_1_rounded, "Invitar",
-                      () => _showAddUserBottomSheet(context)),
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AdminContractDashboard()),
+                      ),
+                    ),
+                  ),
+
+                  if (currentUserRole == 'super_admin' || 
+                      currentUserRole == 'admin' || 
+                      currentUserRole == 'supervisor') ...[
+                    Expanded(
+                      child: _topMenuButton(
+                        context,
+                        Icons.group_work_rounded,
+                        "Clientes",
+                        () {
+                        Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const UserDashboard()),
+                            );
+                          },
+                      ),
+                    ),
+                  ],
+                  Expanded(
+                    child: _topMenuButton(
+                      context, 
+                      Icons.person_add_alt_1_rounded, 
+                      "Invitar",
+                      () => _showAddUserBottomSheet(context),
+                    ),
+                  ),
                 ],
               ),
             ),

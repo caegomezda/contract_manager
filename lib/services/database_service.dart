@@ -171,59 +171,61 @@ class DatabaseService {
     await _db.collection('invitations').doc(email.toLowerCase().trim()).delete();
   }
 
-  /// ESTE ES EL MÉTODO CORREGIDO PARA EVITAR ÍNDICES Y PERMISSION_DENIED
+  /// MÉTODO DEFINITIVO: Separa las consultas por roles para evitar bloqueos de seguridad
   Stream<List<Map<String, dynamic>>> getUsersStream(String currentUid, String role) {
-    // CASO PARA ADMINISTRADOR: Usamos RxDart para unir streams simples
     if (role == 'admin') {
-      // Stream 1: Usuarios que este admin creó (Jerarquía vertical)
-      final streamHijos = _db.collection('users')
-          .where('parent_admin_id', isEqualTo: currentUid)
-          .snapshots();
-
-      // Stream 2: Visibilidad horizontal (Otros admins y todos los supervisores)
-      final streamGlobal = _db.collection('users')
+      // Stream 1: Visibilidad de otros administradores y supervisores
+      final streamColegas = _db.collection('users')
           .where('role', whereIn: ['admin', 'supervisor'])
           .snapshots();
 
-      // Stream 3: Su propio documento (Evita errores de perfil propio)
-      final streamYo = _db.collection('users')
-          .doc(currentUid)
+      // Stream 2: VISIBILIDAD DE TODOS LOS TRABAJADORES (Workers)
+      // Al pedir explícitamente el rol 'worker', Firebase valida el permiso correctamente
+      final streamTodosLosWorkers = _db.collection('users')
+          .where('role', isEqualTo: 'worker')
           .snapshots();
 
+      // Stream 3: Su propio documento
+      final streamYo = _db.collection('users').doc(currentUid).snapshots();
+
       return Rx.combineLatest3(
-        streamHijos, 
-        streamGlobal, 
+        streamColegas, 
+        streamTodosLosWorkers, 
         streamYo, 
-        (QuerySnapshot hijos, QuerySnapshot global, DocumentSnapshot yo) {
+        (QuerySnapshot colegas, QuerySnapshot workers, DocumentSnapshot yo) {
           final Map<String, Map<String, dynamic>> result = {};
 
-          // Procesar hijos
-          for (var doc in hijos.docs) {
+          // 1. Agregamos Admins y Supervisores
+          for (var doc in colegas.docs) {
             result[doc.id] = doc.data() as Map<String, dynamic>..['uid'] = doc.id;
           }
-          // Procesar globales (Admins/Supervisores)
-          for (var doc in global.docs) {
+          
+          // 2. Agregamos TODOS los Workers del sistema
+          for (var doc in workers.docs) {
             result[doc.id] = doc.data() as Map<String, dynamic>..['uid'] = doc.id;
           }
-          // Procesarse a sí mismo
+
+          // 3. Agregamos el perfil propio
           if (yo.exists) {
             result[yo.id] = yo.data() as Map<String, dynamic>..['uid'] = yo.id;
           }
 
           final finalList = result.values.toList();
-          finalList.sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+
+          // Filtro de seguridad: no ver Super Admins
+          finalList.removeWhere((u) => u['role'] == 'super_admin');
+
+          finalList.sort((a, b) => (a['name'] ?? '').toLowerCase().compareTo((b['name'] ?? '').toLowerCase()));
           return finalList;
         }
       );
     } 
     
-    // CASO PARA SUPER ADMIN O SUPERVISOR: Consultas directas (No requieren lógica compleja)
+    // CASO PARA SUPER ADMIN O SUPERVISOR (Se mantiene igual)
     Query query = _db.collection('users');
-    
     if (role == 'supervisor') {
       query = query.where('supervisor_id', isEqualTo: currentUid);
     } 
-    // Si es Super Admin, la query queda sin filtros (ve todo)
 
     return query.snapshots().map((snapshot) {
       final list = snapshot.docs.map((doc) {
@@ -231,7 +233,7 @@ class DatabaseService {
         data['uid'] = doc.id;
         return data;
       }).toList();
-      list.sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+      list.sort((a, b) => (a['name'] ?? '').toLowerCase().compareTo((b['name'] ?? '').toLowerCase()));
       return list;
     });
   }

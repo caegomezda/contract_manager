@@ -1,15 +1,13 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:contract_manager/ui/screens/home/add_client_screen.dart';
 import 'package:contract_manager/ui/screens/home/client_detail_screen.dart';
 import 'package:contract_manager/services/database_service.dart';
 
-/// Panel principal para usuarios con rol de trabajador.
-/// 
-/// Esta pantalla permite visualizar, buscar y gestionar los clientes asignados 
-/// al usuario autenticado, conectándose en tiempo real con Firestore.
+/// Panel principal para usuarios con rol de trabajador y sección de clientes para Admins.
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
 
@@ -18,11 +16,36 @@ class UserDashboard extends StatefulWidget {
 }
 
 class _UserDashboardState extends State<UserDashboard> {
-  /// Almacena el texto de búsqueda introducido por el usuario.
-  String _searchQuery = ""; 
+  String _searchQuery = "";
+  String _currentUserRole = "";
+  bool _isLoadingRole = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+  }
+
+  /// Carga el rol para decidir qué elementos de navegación mostrar
+  Future<void> _loadUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (mounted) {
+        setState(() {
+          _currentUserRole = doc.data()?['role'] ?? 'worker';
+          _isLoadingRole = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingRole) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: Column(
@@ -36,39 +59,66 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  /// Construye la cabecera superior con el título y la opción de cierre de sesión.
+  /// Cabecera dinámica con flecha de retorno para Admins/Supervisores
   Widget _buildHeader(BuildContext context) {
+    final bool canPop = Navigator.canPop(context);
+    // Verificamos si es un rol administrativo
+    final bool isManagement = _currentUserRole == 'admin' || 
+                             _currentUserRole == 'super_admin' || 
+                             _currentUserRole == 'supervisor';
+
     return Container(
-      padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 20),
+      padding: const EdgeInsets.only(top: 60, left: 10, right: 20, bottom: 20),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(30), 
+          bottomLeft: Radius.circular(30),
           bottomRight: Radius.circular(30),
         ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            "Mis Contratos",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              // Solo muestra flecha de retorno si puede volver atrás Y es admin/supervisor
+              if (canPop && isManagement)
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              const SizedBox(width: 5),
+              Text(
+                isManagement ? "Sección Clientes" : "Mis Contratos",
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.grey),
-            tooltip: "Cerrar Sesión",
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (!mounted) return;
-              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-            },
-          ),
+          // Si es trabajador (no puede hacer pop), mostramos Logout
+          // Si es Admin pero entró directo, también mostramos Logout
+          if (!canPop)
+            IconButton(
+              icon: const Icon(Icons.logout_rounded, color: Colors.grey),
+              tooltip: "Cerrar Sesión",
+              onPressed: () => _handleLogout(context),
+            ),
         ],
       ),
     );
   }
 
-  /// Campo de búsqueda dinámico que actualiza el estado de la lista en tiempo real.
+  /// Lógica de Logout centralizada y limpia
+  Future<void> _handleLogout(BuildContext context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      // Navegamos al AuthWrapper (ruta '/') para limpiar el estado
+      Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+    } catch (e) {
+      debugPrint("Error al cerrar sesión: $e");
+    }
+  }
+
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -89,7 +139,7 @@ class _UserDashboardState extends State<UserDashboard> {
           decoration: const InputDecoration(
             hintText: "Buscar cliente por nombre...",
             hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-            prefixIcon: Icon(Icons.search, color: Colors.blueAccent),
+            prefixIcon: Icon(Icons.search, color: Colors.indigo),
             border: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(vertical: 15),
           ),
@@ -98,8 +148,6 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  /// Gestiona la suscripción al flujo de datos de clientes desde el [DatabaseService].
-  /// Realiza el procesamiento de datos: ordenamiento y filtrado por texto.
   Widget _buildClientsStream() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: DatabaseService().getClientsStream(),
@@ -107,7 +155,6 @@ class _UserDashboardState extends State<UserDashboard> {
         if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-        // 1. Preparación de la lista y ordenamiento alfabético
         List<Map<String, dynamic>> clients = List.from(snapshot.data!);
         clients.sort((a, b) {
           String nameA = (a['name'] ?? "").toString().toLowerCase();
@@ -115,7 +162,6 @@ class _UserDashboardState extends State<UserDashboard> {
           return nameA.compareTo(nameB);
         });
 
-        // 2. Filtrado basado en la entrada del usuario
         final filteredClients = clients.where((client) {
           final name = (client['name'] ?? "").toString().toLowerCase();
           return name.contains(_searchQuery);
@@ -132,14 +178,13 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  /// Muestra una interfaz informativa cuando la lista de clientes está vacía.
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40),
         child: Text(
           _searchQuery.isEmpty 
-            ? "No tienes clientes registrados aún." 
+            ? "No hay clientes registrados aún." 
             : "No se encontró ningún cliente con '$_searchQuery'.",
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.grey),
@@ -148,7 +193,6 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  /// Widget de tarjeta individual para representar los datos básicos del cliente.
   Widget _buildClientCard(Map<String, dynamic> client) {
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -156,7 +200,7 @@ class _UserDashboardState extends State<UserDashboard> {
         MaterialPageRoute(
           builder: (context) => ClientDetailScreen(
             client: client, 
-            isAdmin: false,
+            isAdmin: _currentUserRole != 'worker',
           ),
         ),
       ),
@@ -168,7 +212,7 @@ class _UserDashboardState extends State<UserDashboard> {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -200,7 +244,7 @@ class _UserDashboardState extends State<UserDashboard> {
               Expanded(
                 flex: 2,
                 child: Container(
-                  color: Colors.blueGrey[400],
+                  color: Colors.indigo[400],
                   child: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
                 ),
               ),
@@ -211,16 +255,15 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  /// Botón flotante para acceder a la creación de un nuevo cliente.
   Widget _buildAddClientButton() {
     return FloatingActionButton.extended(
       onPressed: () => Navigator.push(
         context, 
         MaterialPageRoute(builder: (context) => const AddClientScreen())
       ),
-      label: const Text("Nuevo Cliente"),
-      icon: const Icon(Icons.add),
-      backgroundColor: Colors.blueAccent,
+      label: const Text("Nuevo Cliente", style: TextStyle(color: Colors.white)),
+      icon: const Icon(Icons.add, color: Colors.white),
+      backgroundColor: Colors.indigo,
     );
   }
 }
