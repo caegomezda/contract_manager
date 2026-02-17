@@ -120,7 +120,7 @@ class AuthWrapper extends StatelessWidget {
             final userModel = UserModel.fromMap(data, userSnap.data!.id);
 
             // 1. Lógica para Admins
-            if (userModel.isSuperAdmin || userModel.role == 'super_admin' || userModel.role == 'admin') {
+            if (userModel.isSuperAdmin || userModel.role == 'super_admin' || userModel.role == 'admin' || userModel.role == 'supervisor') {
               return LegalCheckWrapper(child: AdminDashboard());
             }
 

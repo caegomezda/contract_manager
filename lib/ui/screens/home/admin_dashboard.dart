@@ -1,4 +1,5 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/main.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
 import 'package:contract_manager/services/database_service.dart';
@@ -22,28 +23,55 @@ class _AdminDashboardState extends State<AdminDashboard> {
   String _searchQuery = "";
   String _selectedFilter = "Todos"; // Opciones: Todos, Admin, Supervisor, Worker
 
-Future<void> _handleLogout(BuildContext context) async {
-    try {
-      // 1. Cerramos la sesión en Firebase
-      await FirebaseAuth.instance.signOut();
+  String currentUserRole = '';
+  String currentUserId = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserData();
+  }
+
+  void _loadCurrentUserData() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() {
+        currentUserId = user.uid;
+      });
       
-      if (!context.mounted) return;
-
-Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const AuthWrapper()),
-      (route) => false,
-    );
-
-    } catch (e) {
-      debugPrint("Error al cerrar sesión: $e");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error al cerrar sesión")),
-        );
-      }
+      // Obtenemos el rol desde Firestore para saber qué mostrar
+      FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
+        if (doc.exists && mounted) {
+          setState(() {
+            currentUserRole = doc.data()?['role'] ?? 'worker';
+          });
+        }
+      });
     }
   }
+
+  Future<void> _handleLogout(BuildContext context) async {
+      try {
+        // 1. Cerramos la sesión en Firebase
+        await FirebaseAuth.instance.signOut();
+        
+        if (!context.mounted) return;
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const AuthWrapper()),
+          (route) => false,
+        );
+
+      } catch (e) {
+        debugPrint("Error al cerrar sesión: $e");
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Error al cerrar sesión")),
+          );
+        }
+      }
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -61,54 +89,61 @@ Navigator.pushAndRemoveUntil(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
               child: Column(
                 children: [
+                  // Barra de búsqueda: Siempre visible para todos
                   TextField(
                     controller: _searchController,
                     onChanged: (value) => setState(() => _searchQuery = value),
                     decoration: _inputDecoration(Icons.search, "Buscar por nombre o correo...")
                         .copyWith(
-                          suffixIcon: _searchQuery.isNotEmpty 
-                            ? IconButton(
-                                icon: const Icon(Icons.clear), 
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = "");
-                                }) 
-                            : null
-                        ),
-                  ),
-                  const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: ["Todos", "Admin", "Supervisor", "Worker"].map((filter) {
-                        bool isSelected = _selectedFilter == filter;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(filter == "Worker" ? "Trabajadores" : filter),
-                            selected: isSelected,
-                            onSelected: (val) => setState(() => _selectedFilter = filter),
-                            selectedColor: Colors.indigo[100],
-                            checkmarkColor: Colors.indigo,
-                            labelStyle: TextStyle(
-                              color: isSelected ? Colors.indigo[900] : Colors.grey[700],
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            ),
-                            backgroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                      suffixIcon: _searchQuery.isNotEmpty 
+                        ? IconButton(
+                            icon: const Icon(Icons.clear), 
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = "");
+                            }) 
+                        : null
                     ),
                   ),
+
+                  // SECCIÓN DE FILTROS: Solo visible si NO es supervisor
+                  // Asumiendo que tienes una variable 'currentUserRole'
+                  if (currentUserRole != 'supervisor') ...[
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ["Todos", "Admin", "Supervisor", "Worker"].map((filter) {
+                          bool isSelected = _selectedFilter == filter;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(filter == "Worker" ? "Trabajadores" : filter),
+                              selected: isSelected,
+                              onSelected: (val) => setState(() => _selectedFilter = filter),
+                              selectedColor: Colors.indigo[100],
+                              checkmarkColor: Colors.indigo,
+                              labelStyle: TextStyle(
+                                color: isSelected ? Colors.indigo[900] : Colors.grey[700],
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ] else 
+                    // Espacio extra si es supervisor para que no quede pegado a lo que sigue
+                    const SizedBox(height: 10),
                 ],
               ),
             ),
           ),
-
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
@@ -125,9 +160,13 @@ Navigator.pushAndRemoveUntil(
           ),
 
           StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _db.getUsersStream(currentUid, 'admin'),
+            // Usamos el UID del usuario actual para el stream
+            stream: (currentUserRole.isEmpty || currentUid.isEmpty) 
+              ? const Stream.empty() 
+              : _db.getUsersStream(currentUid, currentUserRole),
             builder: (context, snapshot) {
               if (snapshot.hasError) return _buildErrorState(snapshot.error.toString());
+              
               if (!snapshot.hasData) {
                 return const SliverToBoxAdapter(
                   child: Center(
@@ -145,32 +184,51 @@ Navigator.pushAndRemoveUntil(
                 final name = (u['name'] ?? '').toString().toLowerCase();
                 final email = (u['email'] ?? '').toString().toLowerCase();
                 final role = (u['role'] ?? '').toString().toLowerCase();
+                final supervisorId = (u['supervisor_id'] ?? '').toString(); // Campo del trabajador
                 final query = _searchQuery.toLowerCase();
 
-                // 1. Filtro de búsqueda
+                // 1. Filtro de búsqueda (Nombre o Email)
                 bool matchesSearch = name.contains(query) || email.contains(query);
                 
-                // 2. Filtro de Rol
+                // 2. Filtro de Rol (Solo aplica si no eres supervisor, ya que al supervisor le ocultamos los chips)
                 bool matchesRole = _selectedFilter == "Todos" || role == _selectedFilter.toLowerCase();
 
-                // 3. Regla de Privacidad: Admins NO ven Super Admins
-                bool isNotSuperAdmin = role != 'super_admin';
+                // 3. Regla de Privacidad: Nadie (excepto otro SuperAdmin) ve Super Admins
+                bool isNotSuperAdmin = role != 'super_admin' || currentUserRole == 'super_admin';
 
-                return matchesSearch && matchesRole && isNotSuperAdmin;
+                // --- 4. NUEVA REGLA PARA SUPERVISOR ---
+                bool matchesHierarchy = true;
+                if (currentUserRole == 'supervisor') {
+                  // El supervisor SOLO ve a los que tienen su UID asignado
+                  matchesHierarchy = supervisorId == currentUid;
+                }
+
+                // Devolvemos el usuario solo si cumple TODAS las condiciones
+                return matchesSearch && matchesRole && isNotSuperAdmin && matchesHierarchy;
               }).toList();
 
+              // Estado vacío personalizado
               if (workers.isEmpty) {
-                return const SliverToBoxAdapter(
+                return SliverToBoxAdapter(
                   child: Center(
                     child: Padding(
-                      padding: EdgeInsets.all(40),
-                      child: Text("No se encontraron resultados",
-                          style: TextStyle(color: Colors.grey)),
+                      padding: const EdgeInsets.all(40),
+                      child: Column(
+                        children: [
+                          Icon(Icons.person_search, size: 50, color: Colors.grey[400]),
+                          const SizedBox(height: 10),
+                          Text(
+                            currentUserRole == 'supervisor' 
+                              ? "No tienes trabajadores asignados todavía"
+                              : "No se encontraron resultados",
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
               }
-
               return SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
@@ -450,42 +508,59 @@ Navigator.pushAndRemoveUntil(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (val) => _handleMenuAction(context, val, worker),
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-                value: 'view', 
+          itemBuilder: (context) {
+            // Verificamos el rol del trabajador de esta tarjeta
+            final String workerRole = (worker['role'] ?? '').toString().toLowerCase();
+            
+            // Condición: ¿Se puede cambiar el rol? 
+            // No si el objetivo es super_admin O si quien mira es un supervisor
+            bool canChangeRole = workerRole != 'super_admin' && currentUserRole != 'supervisor';
+
+            return [
+              const PopupMenuItem(
+                value: 'view',
                 child: ListTile(
-                  leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo), 
+                  leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo),
                   title: Text("Clientes", style: TextStyle(fontSize: 14)),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
-                )),
-            const PopupMenuItem(
-                value: 'change_role',
-                child: ListTile(
-                  leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple),
-                  title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
                 ),
-            ),
-            if (accessCode != null && accessCode.toString().isNotEmpty)
-              PopupMenuItem(
-                value: 'copy_code', 
+              ),
+
+              // OPCIÓN CONDICIONAL: Solo aparece si se cumplen los permisos
+              if (canChangeRole)
+                const PopupMenuItem(
+                  value: 'change_role',
+                  child: ListTile(
+                    leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple),
+                    title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+
+              if (accessCode != null && accessCode.toString().isNotEmpty)
+                PopupMenuItem(
+                  value: 'copy_code',
+                  child: ListTile(
+                    leading: const Icon(Icons.content_copy_rounded, color: Colors.blue),
+                    title: const Text("Copiar Código", style: TextStyle(fontSize: 14)),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+
+              const PopupMenuItem(
+                value: 'renew',
                 child: ListTile(
-                  leading: const Icon(Icons.content_copy_rounded, color: Colors.blue), 
-                  title: Text("Copiar Código", style: const TextStyle(fontSize: 14)),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                )),
-            const PopupMenuItem(
-                value: 'renew', 
-                child: ListTile(
-                  leading: Icon(Icons.key_outlined, color: Colors.orange), 
+                  leading: Icon(Icons.key_outlined, color: Colors.orange),
                   title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
-                )),
-          ],
+                ),
+              ),
+            ];
+          },
         ),
       ),
     );
