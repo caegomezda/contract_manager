@@ -46,7 +46,7 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       // Inyección dinámica del dashboard correspondiente al rol
-      body: isAdmin ? const AdminDashboard() : const UserDashboard(),
+      body: isAdmin ?  AdminDashboard() : const UserDashboard(),
     );
   }
 }

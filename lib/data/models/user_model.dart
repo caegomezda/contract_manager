@@ -1,32 +1,52 @@
 class UserModel {
   final String uid;
+  final String name;
   final String email;
-  final String role; // 'admin' o 'worker' (operario)
+  final String role; // super_admin, admin, supervisor, worker
+  final String? parentAdminId;
+  final String? supervisorId;
+  final String? authCode;
+  final DateTime? authValidUntil;
+  final bool isSuperAdmin;
 
   UserModel({
-    required this.uid, 
-    required this.email, 
-    required this.role
+    required this.uid,
+    required this.name,
+    required this.email,
+    required this.role,
+    this.parentAdminId,
+    this.supervisorId,
+    this.authCode,
+    this.authValidUntil,
+    this.isSuperAdmin = false,
   });
 
-  // Convierte el objeto a un Mapa para enviarlo a Firebase
-  Map<String, dynamic> toMap() {
-    return {
-      'uid': uid,
-      'email': email,
-      'role': role,
-    };
-  }
-
-  // Crea un UserModel desde un documento de Firestore
-  factory UserModel.fromMap(Map<String, dynamic> map, String id) {
+  factory UserModel.fromMap(Map<String, dynamic> data, String documentId) {
     return UserModel(
-      uid: id, // Usamos el ID del documento de Firestore
-      email: map['email'] ?? '',
-      role: map['role'] ?? 'worker',
+      uid: documentId,
+      name: data['name'] ?? '',
+      email: data['email'] ?? '',
+      role: data['role'] ?? 'worker',
+      parentAdminId: data['parent_admin_id'],
+      supervisorId: data['supervisor_id'],
+      authCode: data['auth_code'],
+      authValidUntil: data['auth_valid_until'] != null 
+          ? DateTime.tryParse(data['auth_valid_until'].toString()) 
+          : null,
+      isSuperAdmin: data['is_super_admin'] ?? false,
     );
   }
 
-  // Getter útil para comprobaciones rápidas en la UI
-  bool get isAdmin => role == 'admin';
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'email': email,
+      'role': role,
+      'parent_admin_id': parentAdminId,
+      'supervisor_id': supervisorId,
+      'auth_code': authCode,
+      'auth_valid_until': authValidUntil?.toIso8601String(),
+      'is_super_admin': isSuperAdmin,
+    };
+  }
 }

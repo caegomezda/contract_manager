@@ -15,16 +15,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _invitationCodeController = TextEditingController();
+
   bool _isLoading = false;
-  bool _obscurePassword = true; // Para mostrar/ocultar contraseña
+  bool _obscurePassword = true;
 
   Future<void> _registerUser() async {
     final name = _nameController.text.trim();
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
     final pass = _passwordController.text.trim();
+    final code = _invitationCodeController.text.trim();
 
-    if (email.isEmpty || pass.isEmpty || name.isEmpty) {
-      _showError("Por favor, completa todos los campos");
+    if (email.isEmpty || pass.isEmpty || name.isEmpty || code.isEmpty) {
+      _showError("Por favor, completa todos los campos incluyendo el código");
       return;
     }
 
@@ -36,29 +39,56 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Crear usuario en Firebase Auth
+      // 1. VALIDAR CÓDIGO EN LA COLECCIÓN DE INVITACIONES (LA SALA DE ESPERA)
+      // Cambiamos 'users' por 'invitations'
+      final inviteQuery = await FirebaseFirestore.instance
+          .collection('invitations') 
+          .where('email', isEqualTo: email)
+          .where('auth_code', isEqualTo: code)
+          .limit(1)
+          .get();
+
+      if (inviteQuery.docs.isEmpty) {
+        _showError("Código de invitación inválido o correo no autorizado");
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Extraer datos de la invitación (rol, admin que lo invitó, etc.)
+      final invitationDoc = inviteQuery.docs.first;
+      final invitationData = invitationDoc.data();
+
+      // 2. CREAR USUARIO EN FIREBASE AUTH
       UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: pass,
       );
 
-      // 2. Enviar Email de Verificación
+      // 3. ENVIAR EMAIL DE VERIFICACIÓN
       await userCredential.user!.sendEmailVerification();
 
-      // 3. Crear perfil en Firestore (Rol 'worker' por defecto para operarios)
-      // Nota: He cambiado 'user' a 'worker' para que coincida con la lógica de tu AdminDashboard
+      // 4. CREAR PERFIL DEFINITIVO EN LA COLECCIÓN 'users'
+      // Ahora sí, el usuario ya tiene UID de Auth y puede entrar a 'users'
       await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-        'name': name,
+        'uid': userCredential.user!.uid,
         'email': email,
-        'role': 'worker', 
-        'active': true,
+        'name': name,
+        'role': invitationData['role'],
+        'parent_admin_id': invitationData['parent_admin_id'],
+        'supervisor_id': invitationData['supervisor_id'],
+        'active': true, // Ahora ya es un usuario activo
+        'is_super_admin': false,
         'clients': 0,
+        'auth_valid_until': DateTime.now().add(const Duration(days: 30)).toIso8601String(),
         'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
       });
+
+      // 5. LIMPIAR LA INVITACIÓN (Para que el código no se use dos veces)
+      await FirebaseFirestore.instance.collection('invitations').doc(email).delete();
 
       if (!mounted) return;
       
-      // 4. Navegar a pantalla de verificación
       Navigator.pushReplacement(
         context, 
         MaterialPageRoute(builder: (context) => const VerifyEmailScreen())
@@ -69,7 +99,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (e.code == 'weak-password') message = "La contraseña es muy débil";
       if (e.code == 'email-already-in-use') message = "Este correo ya está registrado";
       if (e.code == 'invalid-email') message = "El formato del correo es inválido";
-      
       _showError(message);
     } catch (e) {
       _showError("Error inesperado: $e");
@@ -77,6 +106,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // --- EL RESTO DEL CÓDIGO (UI) SE MANTIENE IGUAL ---
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -94,17 +125,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
-            const Text("Crear Cuenta", 
+            const Text("Activar Cuenta", 
               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.indigo)),
-            const Text("Regístrate para comenzar a gestionar contratos", 
+            const Text("Ingresa el código que te proporcionó tu administrador", 
               style: TextStyle(color: Colors.grey, fontSize: 16)),
-            const SizedBox(height: 40),
+            const SizedBox(height: 30),
             
             _input("Nombre completo", Icons.person_outline, _nameController),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             _input("Correo electrónico", Icons.email_outlined, _emailController, type: TextInputType.emailAddress),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
+            
+            _input(
+              "Código de Invitación (4 dígitos)", 
+              Icons.vpn_key_outlined, 
+              _invitationCodeController,
+              type: TextInputType.number
+            ),
+            
+            const SizedBox(height: 15),
             _input(
               "Contraseña", 
               Icons.lock_outline, 
@@ -116,7 +155,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               )
             ),
             
-            const SizedBox(height: 40),
+            const SizedBox(height: 30),
             
             SizedBox(
               width: double.infinity, 
@@ -126,11 +165,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.indigo, 
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  elevation: 2,
                 ),
                 child: _isLoading 
                   ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("CREAR CUENTA", 
+                  : const Text("REGISTRAR", 
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
@@ -160,7 +198,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         suffixIcon: suffix,
         filled: true,
         fillColor: Colors.grey[50],
-        labelStyle: const TextStyle(color: Colors.blueGrey),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide(color: Colors.grey[200]!),

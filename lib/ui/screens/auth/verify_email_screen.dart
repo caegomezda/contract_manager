@@ -62,7 +62,7 @@ class VerifyEmailScreen extends StatelessWidget {
                     elevation: 0,
                   ),
                   child: const Text(
-                    "YA LO VERIFIQUÉ, IR AL INICIO", 
+                    "IR AL INICIO", 
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
                   ),
                 ),

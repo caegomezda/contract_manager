@@ -1,32 +1,29 @@
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Importaciones de Pantallas
+// Modelos
+import 'package:contract_manager/data/models/user_model.dart';
+
+// Importaciones de Pantallas (Ajustadas a tu estructura real)
 import 'package:contract_manager/ui/screens/home/admin_dashboard.dart';
-import 'package:contract_manager/ui/screens/home/user_dashboard.dart';
-import 'package:contract_manager/ui/screens/splash_screen.dart';
+import 'package:contract_manager/ui/screens/home/user_dashboard.dart'; // Tu "WorkerHome" se llama UserDashboard
 import 'package:contract_manager/ui/screens/legal/disclaimer_screen.dart';
 import 'package:contract_manager/ui/screens/auth/login_screen.dart';
 import 'package:contract_manager/ui/screens/auth/signup_screen.dart';
 import 'package:contract_manager/ui/screens/auth/verify_email_screen.dart';
 import 'package:contract_manager/ui/screens/auth/reset_password_screen.dart';
+import 'package:contract_manager/ui/screens/auth/token_lock_screen.dart';
 
-// Configuración de Firebase
 import 'firebase_options.dart';
 
-/// Punto de entrada principal de la aplicación.
-/// Inicializa los servicios de Firebase y configura la persistencia de datos local.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Configuración de optimización para Firestore
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -35,7 +32,6 @@ void main() async {
   runApp(const MyApp());
 }
 
-/// Widget principal que define el tema de la aplicación y el sistema de rutas.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -44,22 +40,20 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Contract Manager',
-      // La Splash Screen gestiona la lógica inicial de navegación
-      home: const CustomSplashScreen(), 
+      home: const AuthWrapper(), // El Wrapper decide qué pantalla mostrar
       routes: {
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignUpScreen(),
         '/verify': (context) => const VerifyEmailScreen(),
         '/reset': (context) => const ResetPasswordScreen(),
-        '/admin_dashboard': (context) => const AdminDashboard(),
+        '/admin_dashboard': (context) => AdminDashboard(),
         '/user_dashboard': (context) => const UserDashboard(),
       },
     );
   }
 }
 
-/// Componente de seguridad legal que intercepta el acceso a los Dashboards.
-/// Verifica en las preferencias locales si el usuario ha aceptado los términos.
+// --- WRAPPER LEGAL ---
 class LegalCheckWrapper extends StatefulWidget {
   final Widget child;
   const LegalCheckWrapper({super.key, required this.child});
@@ -78,31 +72,20 @@ class _LegalCheckWrapperState extends State<LegalCheckWrapper> {
     _checkLegalStatus();
   }
 
-  /// Consulta SharedPreferences para determinar si debe mostrar el Disclaimer.
   Future<void> _checkLegalStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenLegal = prefs.getBool('seen_legal') ?? false;
-    
-    if (mounted) {
-      setState(() {
-        _needsLegal = !hasSeenLegal;
-        _isLoading = false;
-      });
-    }
+    if (mounted) setState(() { _needsLegal = !hasSeenLegal; _isLoading = false; });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     return _needsLegal ? const LegalDisclaimerScreen() : widget.child;
   }
 }
 
-/// Gestiona el estado de la sesión y el enrutamiento basado en roles.
-/// Escucha cambios en la autenticación y redirige al Dashboard correspondiente o al Login.
+// --- AUTH WRAPPER CORREGIDO ---
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -110,39 +93,46 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        final user = snapshot.data;
+        if (!authSnapshot.hasData) return const LoginScreen();
 
-        // Caso: No autenticado
-        if (user == null) return const LoginScreen();
+        final firebaseUser = authSnapshot.data!;
 
-        // Caso: Email no verificado
-        if (!user.emailVerified) return const VerifyEmailScreen();
+        // Si el email no está verificado, forzamos pantalla de verificación
+        if (!firebaseUser.emailVerified) return const VerifyEmailScreen();
 
-        // Caso: Autenticado, verificamos rol en Firestore
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
-          builder: (context, roleSnapshot) {
-            if (roleSnapshot.connectionState == ConnectionState.waiting) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).snapshots(),
+          builder: (context, userSnap) {
+            if (userSnap.connectionState == ConnectionState.waiting) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
-            if (roleSnapshot.hasData && roleSnapshot.data!.exists) {
-              final String role = roleSnapshot.data!['role'] ?? 'user';
-              
-              final Widget targetDashboard = role == 'admin' 
-                  ? const AdminDashboard() 
-                  : const UserDashboard();
-              
-              // Protegemos el dashboard con la verificación legal
-              return LegalCheckWrapper(child: targetDashboard);
+            if (!userSnap.hasData || !userSnap.data!.exists) {
+              return const LoginScreen(); 
             }
 
-            return const LoginScreen();
+            final data = userSnap.data!.data() as Map<String, dynamic>;
+            final userModel = UserModel.fromMap(data, userSnap.data!.id);
+
+            // 1. Lógica para Admins
+            if (userModel.isSuperAdmin || userModel.role == 'super_admin' || userModel.role == 'admin') {
+              return LegalCheckWrapper(child: AdminDashboard());
+            }
+
+            // 2. Lógica para Workers (UserDashboard) con bloqueo de Token
+            final bool isExpired = userModel.authValidUntil == null || 
+                                   DateTime.now().isAfter(userModel.authValidUntil!);
+
+            if (isExpired) {
+              return TokenLockScreen(user: userModel);
+            }
+
+            return LegalCheckWrapper(child: const UserDashboard());
           },
         );
       },
