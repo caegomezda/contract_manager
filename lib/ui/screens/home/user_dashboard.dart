@@ -89,7 +89,7 @@ class _UserDashboardState extends State<UserDashboard> {
                 ),
               const SizedBox(width: 5),
               Text(
-                isManagement ? "Sección Clientes" : "Mis Contratos",
+                isManagement ? "Clientes" : "Mis Contratos",
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ],

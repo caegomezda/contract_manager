@@ -551,7 +551,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         title: Row(
           children: [
             Text(worker['name'] ?? 'Usuario',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
           ],
         ),
         subtitle: Column(
@@ -664,14 +664,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         context: context,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              const Icon(Icons.manage_accounts, color: Colors.indigo),
-              const SizedBox(width: 10),
-              const Text("Modificar Rol", 
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
           content: SizedBox(
             // Forzamos un ancho mínimo para evitar el overflow y que se vea más amplio
             width: MediaQuery.of(context).size.width * 0.9,
