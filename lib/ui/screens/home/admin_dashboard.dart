@@ -1,5 +1,4 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
-import 'package:contract_manager/config/app_config.dart'; // Importamos tu configuración
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
 import 'package:contract_manager/services/database_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,10 +7,19 @@ import 'package:intl/intl.dart';
 import 'worker_clients_screen.dart';
 import 'package:flutter/services.dart';
 
-class AdminDashboard extends StatelessWidget {
-  final DatabaseService _db = DatabaseService();
+class AdminDashboard extends StatefulWidget {
+  const AdminDashboard({super.key});
 
-  AdminDashboard({super.key});
+  @override
+  State<AdminDashboard> createState() => _AdminDashboardState();
+}
+
+class _AdminDashboardState extends State<AdminDashboard> {
+  final DatabaseService _db = DatabaseService();
+  final TextEditingController _searchController = TextEditingController();
+  
+  String _searchQuery = "";
+  String _selectedFilter = "Todos"; // Opciones: Todos, Admin, Supervisor, Worker
 
   Future<void> _handleLogout(BuildContext context) async {
     try {
@@ -32,11 +40,66 @@ class AdminDashboard extends StatelessWidget {
       body: CustomScrollView(
         slivers: [
           _buildSliverAppBar(context),
+          
+          // --- BARRA DE BÚSQUEDA Y FILTROS ---
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _searchQuery = value),
+                    decoration: _inputDecoration(Icons.search, "Buscar por nombre o correo...")
+                        .copyWith(
+                          suffixIcon: _searchQuery.isNotEmpty 
+                            ? IconButton(
+                                icon: const Icon(Icons.clear), 
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = "");
+                                }) 
+                            : null
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: ["Todos", "Admin", "Supervisor", "Worker"].map((filter) {
+                        bool isSelected = _selectedFilter == filter;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: Text(filter == "Worker" ? "Trabajadores" : filter),
+                            selected: isSelected,
+                            onSelected: (val) => setState(() => _selectedFilter = filter),
+                            selectedColor: Colors.indigo[100],
+                            checkmarkColor: Colors.indigo,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.indigo[900] : Colors.grey[700],
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                            backgroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
               child: Text(
-                "EQUIPO DE TRABAJO",
+                "USUARIOS",
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: Colors.blueGrey,
@@ -62,13 +125,32 @@ class AdminDashboard extends StatelessWidget {
                 );
               }
 
-              final workers = snapshot.data!;
+              // LÓGICA DE FILTRADO EN TIEMPO REAL
+              final allWorkers = snapshot.data!;
+              final workers = allWorkers.where((u) {
+                final name = (u['name'] ?? '').toString().toLowerCase();
+                final email = (u['email'] ?? '').toString().toLowerCase();
+                final role = (u['role'] ?? '').toString().toLowerCase();
+                final query = _searchQuery.toLowerCase();
+
+                // 1. Filtro de búsqueda
+                bool matchesSearch = name.contains(query) || email.contains(query);
+                
+                // 2. Filtro de Rol
+                bool matchesRole = _selectedFilter == "Todos" || role == _selectedFilter.toLowerCase();
+
+                // 3. Regla de Privacidad: Admins NO ven Super Admins
+                bool isNotSuperAdmin = role != 'super_admin';
+
+                return matchesSearch && matchesRole && isNotSuperAdmin;
+              }).toList();
+
               if (workers.isEmpty) {
                 return const SliverToBoxAdapter(
                   child: Center(
                     child: Padding(
                       padding: EdgeInsets.all(40),
-                      child: Text("No hay trabajadores a tu cargo",
+                      child: Text("No se encontraron resultados",
                           style: TextStyle(color: Colors.grey)),
                     ),
                   ),
@@ -92,7 +174,7 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
-  // --- LÓGICA DE USUARIOS Y CORRECCIÓN DE OVERFLOW ---
+  // --- LÓGICA DE USUARIOS ---
   void _showAddUserBottomSheet(BuildContext context) {
     final nameController = TextEditingController();
     final emailController = TextEditingController();
@@ -284,8 +366,6 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
-  // --- HELPERS UI ---
-
   Widget _buildInputLabel(String label) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 4),
@@ -309,14 +389,8 @@ class AdminDashboard extends StatelessWidget {
   }
 
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
-
-    final String uid = worker['uid'] ?? '';
     final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
-    
-    // Intenta obtener el código de invitación de varios posibles nombres de campo
     final String? accessCode = worker['auth_code']?.toString();
-    
-    final bool isSuperAdmin = (worker['role'] == 'super_admin') || kSuperAdminUids.contains(uid);
     final bool isExpired = _checkIfExpired(worker['auth_valid_until']);
     final String expiryText = _formatDate(worker['auth_valid_until']);
 
@@ -335,23 +409,15 @@ class AdminDashboard extends StatelessWidget {
           width: 52,
           height: 52,
           decoration: BoxDecoration(
-            color: isSuperAdmin ? Colors.amber[50] : (isExpired ? Colors.red[50] : Colors.indigo[50]),
+            color: isExpired ? Colors.red[50] : Colors.indigo[50],
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(
-              isSuperAdmin
-                  ? Icons.stars_rounded
-                  : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person),
-              color: isSuperAdmin ? Colors.amber[800] : (isExpired ? Colors.red : Colors.indigo)),
+              role == 'admin' ? Icons.admin_panel_settings : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person),
+              color: isExpired ? Colors.red : Colors.indigo),
         ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(worker['name'] ?? 'Usuario',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            ),
-          ],
-        ),
+        title: Text(worker['name'] ?? 'Usuario',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -384,7 +450,7 @@ class AdminDashboard extends StatelessWidget {
                 value: 'copy_code', 
                 child: ListTile(
                   leading: const Icon(Icons.content_copy_rounded, color: Colors.blue), 
-                  title: Text("Copiar Código: $accessCode", style: const TextStyle(fontSize: 14)),
+                  title: Text("Copiar Código", style: const TextStyle(fontSize: 14)),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 )),
@@ -423,42 +489,16 @@ class AdminDashboard extends StatelessWidget {
                     workerName: user['name'] ?? 'Desconocido',
                     workerId: user['uid'],
                   )));
-    }else if (action == 'copy_code') {
-        // Usamos 'auth_code' que es como vimos que se llama en tu consola
-        final String code = (user['auth_code'] ?? '').toString();
-        
-        if (code.isNotEmpty) {
-          // Intentamos la copia al portapapeles
-          Clipboard.setData(ClipboardData(text: code)).then((_) {
-            // Solo mostramos el SnackBar si la copia fue exitosa
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar(); // Limpia snackbars anteriores
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.white),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text("Código $code copiado para ${user['name']}")),
-                    ],
-                  ),
-                  behavior: SnackBarBehavior.floating,
-                  backgroundColor: Colors.indigo[900],
-                  duration: const Duration(seconds: 2),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              );
-            }
-          });
-        } else {
-          // Si por alguna razón el código está vacío en ese momento
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("No hay un código activo para copiar")),
-          );
-        }
-      }else if (action == 'renew') {
-       _showRenewDialog(context, user);
-      }
+    } else if (action == 'copy_code') {
+      final String code = (user['auth_code'] ?? '').toString();
+      Clipboard.setData(ClipboardData(text: code)).then((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Código $code copiado")),
+        );
+      });
+    } else if (action == 'renew') {
+      _showRenewDialog(context, user);
+    }
   }
 
   void _showRenewDialog(BuildContext context, Map<String, dynamic> user) {
@@ -472,7 +512,7 @@ class AdminDashboard extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("Selecciona el nuevo periodo para ${user['name']}."),
+            Text("Selecciona el periodo para ${user['name']}."),
             const SizedBox(height: 20),
             DropdownButtonFormField<int>(
               value: selectedDays,
@@ -505,7 +545,7 @@ class AdminDashboard extends StatelessWidget {
 
   Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
-      expandedHeight: 160.0,
+      expandedHeight: 140.0,
       pinned: true,
       elevation: 0,
       backgroundColor: Colors.indigo[800],
@@ -516,7 +556,6 @@ class AdminDashboard extends StatelessWidget {
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(
-        centerTitle: false,
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
