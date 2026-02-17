@@ -1,4 +1,5 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
+import 'package:contract_manager/main.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
 import 'package:contract_manager/services/database_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,13 +22,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
   String _searchQuery = "";
   String _selectedFilter = "Todos"; // Opciones: Todos, Admin, Supervisor, Worker
 
-  Future<void> _handleLogout(BuildContext context) async {
+Future<void> _handleLogout(BuildContext context) async {
     try {
+      // 1. Cerramos la sesión en Firebase
       await FirebaseAuth.instance.signOut();
+      
       if (!context.mounted) return;
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+
+Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const AuthWrapper()),
+      (route) => false,
+    );
+
     } catch (e) {
       debugPrint("Error al cerrar sesión: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error al cerrar sesión")),
+        );
+      }
     }
   }
 
@@ -441,10 +455,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 value: 'view', 
                 child: ListTile(
                   leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo), 
-                  title: Text("Contratos", style: TextStyle(fontSize: 14)),
+                  title: Text("Clientes", style: TextStyle(fontSize: 14)),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 )),
+            const PopupMenuItem(
+                value: 'change_role',
+                child: ListTile(
+                  leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple),
+                  title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+            ),
             if (accessCode != null && accessCode.toString().isNotEmpty)
               PopupMenuItem(
                 value: 'copy_code', 
@@ -480,6 +503,101 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return date != null ? DateFormat('dd/MM/yy').format(date) : "ERROR";
   }
 
+  void _showChangeRoleDialog(BuildContext context, Map<String, dynamic> user) {
+      String selectedRole = (user['role'] ?? 'worker').toString().toLowerCase();
+      final bool isTargetSuperAdmin = user['role'] == 'super_admin';
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.manage_accounts, color: Colors.indigo),
+              const SizedBox(width: 10),
+              const Text("Modificar Rol", 
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SizedBox(
+            // Forzamos un ancho mínimo para evitar el overflow y que se vea más amplio
+            width: MediaQuery.of(context).size.width * 0.9,
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Importante para diálogos
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Selecciona el nuevo nivel de acceso para:",
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "${user['name']}",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+                DropdownButtonFormField<String>(
+                  isExpanded: true, // Esto evita que el texto del dropdown cause overflow interno
+                  value: selectedRole,
+                  items: const [
+                    DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+                    DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
+                    DropdownMenuItem(value: 'admin', child: Text("Administrador")),
+                  ],
+                  onChanged: (val) => selectedRole = val!,
+                  decoration: _inputDecoration(Icons.badge_outlined, "Rol de usuario"),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), 
+              child: Text("CANCELAR", style: TextStyle(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo, 
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+              ),
+              onPressed: () async {
+                try {
+                  await _db.updateUserRole(
+                    targetUid: user['uid'],
+                    newRole: selectedRole,
+                    isTargetSuperAdmin: isTargetSuperAdmin,
+                  );
+
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("✅ Rol actualizado correctamente"),
+                      backgroundColor: Colors.green,
+                      behavior: SnackBarBehavior.floating,
+                    )
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("❌ Error al actualizar"),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    )
+                  );
+                }
+              },
+              child: const Text("ACTUALIZAR"),
+            ),
+          ],
+        ),
+      );
+    }
+    
   void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
     if (action == 'view') {
       Navigator.push(
@@ -489,7 +607,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     workerName: user['name'] ?? 'Desconocido',
                     workerId: user['uid'],
                   )));
-    } else if (action == 'copy_code') {
+    }else if (action == 'change_role') {
+      _showChangeRoleDialog(context, user);
+    }else if (action == 'copy_code') {
       final String code = (user['auth_code'] ?? '').toString();
       Clipboard.setData(ClipboardData(text: code)).then((_) {
         ScaffoldMessenger.of(context).showSnackBar(
