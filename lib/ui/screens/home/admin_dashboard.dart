@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/main.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
 import 'package:contract_manager/services/database_service.dart';
+import 'package:contract_manager/ui/screens/home/pending_invitations_page.dart';
 import 'package:contract_manager/ui/screens/home/user_dashboard.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -145,17 +146,50 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
             ),
           ),
-          const SliverToBoxAdapter(
+// --- SECCIÓN DE TÍTULO Y BOTÓN DE INVITACIONES ---
+          SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
-              child: Text(
-                "USUARIOS",
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.blueGrey,
-                  fontSize: 13,
-                  letterSpacing: 1.5,
-                ),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "USUARIOS",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.blueGrey,
+                      fontSize: 13,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  // BOTÓN ELEVADO: Invitaciones Pendientes
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => PendingInvitationsPage()),
+                      );
+                    },
+                    label: const Text(
+                      "INVITACIONES",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 12,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo, // Color sólido
+                      foregroundColor: Colors.white,
+                      elevation: 4, // Sombra para el efecto "Elevation"
+                      shadowColor: Colors.indigo.withOpacity(0.4),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

@@ -116,7 +116,7 @@ class DatabaseService {
         });
   }
 
-  // --- GESTIÓN DE USUARIOS Y ROLES ---
+  // --- GESTIÓN DE USUARIOS, ROLES E INVITACIONES ---
 
   Future<String> adminCreateUser({
     required String email,
@@ -135,9 +135,10 @@ class DatabaseService {
         'name': name,
         'role': role,
         'parent_admin_id': currentUid, 
-        'supervisor_id': supervisorId,
+        'supervisor_id': currentUid,
         'auth_code': initialAuthCode,
         'auth_valid_until': initialExpiry.toIso8601String(),
+        'is_validated': false,
         'created_at': FieldValue.serverTimestamp(),
       });
       
@@ -146,6 +147,13 @@ class DatabaseService {
       print("Error en adminCreateUser: $e");
       return "ERROR";
     }
+  }
+
+  // --- NUEVA CONFIGURACIÓN: RECUPERACIÓN DE INVITACIONES ---
+  Stream<List<Map<String, dynamic>>> getPendingInvitationsStream() {
+    return _db.collection('invitations')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 
   Future<Map<String, dynamic>?> validateInvitation(String email, String code) async {
@@ -171,21 +179,16 @@ class DatabaseService {
     await _db.collection('invitations').doc(email.toLowerCase().trim()).delete();
   }
 
-  /// MÉTODO DEFINITIVO: Separa las consultas por roles para evitar bloqueos de seguridad
   Stream<List<Map<String, dynamic>>> getUsersStream(String currentUid, String role) {
     if (role == 'admin') {
-      // Stream 1: Visibilidad de otros administradores y supervisores
       final streamColegas = _db.collection('users')
           .where('role', whereIn: ['admin', 'supervisor'])
           .snapshots();
 
-      // Stream 2: VISIBILIDAD DE TODOS LOS TRABAJADORES (Workers)
-      // Al pedir explícitamente el rol 'worker', Firebase valida el permiso correctamente
       final streamTodosLosWorkers = _db.collection('users')
           .where('role', isEqualTo: 'worker')
           .snapshots();
 
-      // Stream 3: Su propio documento
       final streamYo = _db.collection('users').doc(currentUid).snapshots();
 
       return Rx.combineLatest3(
@@ -195,33 +198,24 @@ class DatabaseService {
         (QuerySnapshot colegas, QuerySnapshot workers, DocumentSnapshot yo) {
           final Map<String, Map<String, dynamic>> result = {};
 
-          // 1. Agregamos Admins y Supervisores
           for (var doc in colegas.docs) {
             result[doc.id] = doc.data() as Map<String, dynamic>..['uid'] = doc.id;
           }
-          
-          // 2. Agregamos TODOS los Workers del sistema
           for (var doc in workers.docs) {
             result[doc.id] = doc.data() as Map<String, dynamic>..['uid'] = doc.id;
           }
-
-          // 3. Agregamos el perfil propio
           if (yo.exists) {
-            result[yo.id] = yo.data() as Map<String, dynamic>..['uid'] = yo.id;
+            result[yo.id] = (yo.data() as Map<String, dynamic>)..['uid'] = yo.id;
           }
 
           final finalList = result.values.toList();
-
-          // Filtro de seguridad: no ver Super Admins
           finalList.removeWhere((u) => u['role'] == 'super_admin');
-
-          finalList.sort((a, b) => (a['name'] ?? '').toLowerCase().compareTo((b['name'] ?? '').toLowerCase()));
+          finalList.sort((a, b) => (a['name'] ?? '').toString().toLowerCase().compareTo((b['name'] ?? '').toString().toLowerCase()));
           return finalList;
         }
       );
     } 
     
-    // CASO PARA SUPER ADMIN O SUPERVISOR (Se mantiene igual)
     Query query = _db.collection('users');
     if (role == 'supervisor') {
       query = query.where('supervisor_id', isEqualTo: currentUid);
@@ -233,9 +227,49 @@ class DatabaseService {
         data['uid'] = doc.id;
         return data;
       }).toList();
-      list.sort((a, b) => (a['name'] ?? '').toLowerCase().compareTo((b['name'] ?? '').toLowerCase()));
+      list.sort((a, b) => (a['name'] ?? '').toString().toLowerCase().compareTo((b['name'] ?? '').toString().toLowerCase()));
       return list;
     });
+  }
+
+  Future<void> demoteSupervisorToWorker({required String supervisorUid}) async {
+    try {
+      final supervisorQuery = await _db.collection('users')
+          .where('role', isEqualTo: 'supervisor')
+          .get();
+
+      String? firstAvailableSupervisorId;
+
+      for (var doc in supervisorQuery.docs) {
+        if (doc.id != supervisorUid) {
+          firstAvailableSupervisorId = doc.id;
+          break; 
+        }
+      }
+
+      final WriteBatch batch = _db.batch();
+      final orphanWorkers = await _db.collection('users')
+          .where('supervisor_id', isEqualTo: supervisorUid)
+          .get();
+
+      for (var doc in orphanWorkers.docs) {
+        batch.update(doc.reference, {
+          'supervisor_id': firstAvailableSupervisorId,
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      }
+
+      batch.update(_db.collection('users').doc(supervisorUid), {
+        'role': 'worker',
+        'supervisor_id': firstAvailableSupervisorId,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+    } catch (e) {
+      print("Error en demoteSupervisorToWorker: $e");
+      rethrow;
+    }
   }
 
   Future<void> updateUserRole({
@@ -263,6 +297,7 @@ class DatabaseService {
       await _db.collection('users').doc(targetUid).update({
         'auth_code': newCode,
         'auth_valid_until': expiryDate.toIso8601String(),
+        'is_validated': false, 
         'updated_at': FieldValue.serverTimestamp(),
       });
     } catch (e) {

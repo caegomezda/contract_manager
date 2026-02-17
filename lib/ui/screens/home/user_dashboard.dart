@@ -96,7 +96,7 @@ class _UserDashboardState extends State<UserDashboard> {
           ),
           // Si es trabajador (no puede hacer pop), mostramos Logout
           // Si es Admin pero entró directo, también mostramos Logout
-          if (!canPop)
+          // if (!canPop)
             IconButton(
               icon: const Icon(Icons.logout_rounded, color: Colors.grey),
               tooltip: "Cerrar Sesión",

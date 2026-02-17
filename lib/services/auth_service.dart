@@ -8,23 +8,45 @@ class AuthService {
   // Stream para escuchar cambios en el estado del usuario (Login/Logout)
   Stream<User?> get userStream => _auth.authStateChanges();
 
-  // --- REGISTRO CON ROL ---
-  Future<void> signUp(String email, String password, String role) async {
+  // --- REGISTRO CON ROL (MODIFICADO PARA VINCULAR SUPERVISOR) ---
+  Future<void> signUp(String email, String password, String role, String name) async {
     try {
+      // 1. Buscamos si existe una invitación para este email para heredar datos
+      DocumentSnapshot invDoc = await _db.collection('invitations').doc(email).get();
+      
+      String? supervisorId;
+      String? parentAdminId;
+      
+      if (invDoc.exists) {
+        final data = invDoc.data() as Map<String, dynamic>;
+        supervisorId = data['supervisor_id']; // Aquí obtenemos quién lo invitó
+        parentAdminId = data['parent_admin_id'];
+      }
+
+      // 2. Crear el usuario en Firebase Auth
       UserCredential res = await _auth.createUserWithEmailAndPassword(
         email: email, 
         password: password
       );
 
-      // Guardamos el perfil del usuario con su rol en Firestore
+      // 3. Guardamos el perfil con el vínculo del supervisor
       await _db.collection('users').doc(res.user!.uid).set({
+        'uid': res.user!.uid,
         'email': email,
-        'role': role, // 'admin' o 'worker'
+        'name': name,
+        'role': role, 
+        'supervisor_id': supervisorId ?? '', // Si venía de invitación, se guarda el ID del supervisor
+        'parent_admin_id': parentAdminId ?? '',
         'status': 'active',
         'created_at': FieldValue.serverTimestamp(),
       });
 
-      // Enviamos correo de verificación por seguridad
+      // 4. Borramos la invitación ya que el registro fue exitoso
+      if (invDoc.exists) {
+        await _db.collection('invitations').doc(email).delete();
+      }
+
+      // Enviamos correo de verificación
       await res.user!.sendEmailVerification();
     } catch (e) {
       rethrow;
@@ -41,7 +63,6 @@ class AuthService {
   }
 
   // --- OBTENER ROL DEL USUARIO ---
-  // Vital para saber a qué Dashboard redirigir
   Future<String> getUserRole(String uid) async {
     try {
       DocumentSnapshot doc = await _db.collection('users').doc(uid).get();
