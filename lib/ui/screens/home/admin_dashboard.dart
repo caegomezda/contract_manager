@@ -23,7 +23,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final TextEditingController _searchController = TextEditingController();
   
   String _searchQuery = "";
-  String _selectedFilter = "Todos"; // Opciones: Todos, Admin, Supervisor, Worker
+  String _selectedFilter = "Todos"; 
 
   String currentUserRole = '';
   String currentUserId = '';
@@ -37,15 +37,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void _loadCurrentUserData() {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      setState(() {
-        currentUserId = user.uid;
-      });
-      
-      // Obtenemos el rol desde Firestore para saber qué mostrar
+      setState(() => currentUserId = user.uid);
       FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
         if (doc.exists && mounted) {
           setState(() {
-            currentUserRole = doc.data()?['role'] ?? 'worker';
+            currentUserRole = (doc.data()?['role'] ?? 'worker').toString().toLowerCase();
           });
         }
       });
@@ -53,805 +49,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> _handleLogout(BuildContext context) async {
-      try {
-        // 1. Cerramos la sesión en Firebase
-        await FirebaseAuth.instance.signOut();
-        
-        if (!context.mounted) return;
-
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const AuthWrapper()),
-          (route) => false,
-        );
-
-      } catch (e) {
-        debugPrint("Error al cerrar sesión: $e");
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Error al cerrar sesión")),
-          );
-        }
-      }
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (!context.mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const AuthWrapper()),
+        (route) => false,
+      );
+    } catch (e) {
+      debugPrint("Error al cerrar sesión: $e");
     }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       body: CustomScrollView(
         slivers: [
           _buildSliverAppBar(context),
-          
-          // --- BARRA DE BÚSQUEDA Y FILTROS ---
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Column(
-                children: [
-                  // Barra de búsqueda: Siempre visible para todos
-                  TextField(
-                    controller: _searchController,
-                    onChanged: (value) => setState(() => _searchQuery = value),
-                    decoration: _inputDecoration(Icons.search, "Buscar por nombre o correo...")
-                        .copyWith(
-                      suffixIcon: _searchQuery.isNotEmpty 
-                        ? IconButton(
-                            icon: const Icon(Icons.clear), 
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = "");
-                            }) 
-                        : null
-                    ),
-                  ),
-
-                  // SECCIÓN DE FILTROS: Solo visible si NO es supervisor
-                  // Asumiendo que tienes una variable 'currentUserRole'
-                  if (currentUserRole != 'supervisor') ...[
-                    const SizedBox(height: 12),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: ["Todos", "Admin", "Supervisor", "Worker"].map((filter) {
-                          bool isSelected = _selectedFilter == filter;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: FilterChip(
-                              label: Text(filter == "Worker" ? "Trabajadores" : filter),
-                              selected: isSelected,
-                              onSelected: (val) => setState(() => _selectedFilter = filter),
-                              selectedColor: Colors.indigo[100],
-                              checkmarkColor: Colors.indigo,
-                              labelStyle: TextStyle(
-                                color: isSelected ? Colors.indigo[900] : Colors.grey[700],
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              ),
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ] else 
-                    // Espacio extra si es supervisor para que no quede pegado a lo que sigue
-                    const SizedBox(height: 10),
-                ],
-              ),
-            ),
-          ),
-          // --- SECCIÓN DE TÍTULO Y BOTÓN DE INVITACIONES ---
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "USUARIOS",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Colors.blueGrey,
-                      fontSize: 13,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  // BOTÓN ELEVADO: Invitaciones Pendientes
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => PendingInvitationsPage()),
-                      );
-                    },
-                    label: const Text(
-                      "INVITACIONES",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 12,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.indigo, // Color sólido
-                      foregroundColor: Colors.white,
-                      elevation: 4, // Sombra para el efecto "Elevation"
-                      shadowColor: Colors.indigo.withOpacity(0.4),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          StreamBuilder<List<Map<String, dynamic>>>(
-            // Usamos el UID del usuario actual para el stream
-            stream: (currentUserRole.isEmpty || currentUid.isEmpty) 
-              ? const Stream.empty() 
-              : _db.getUsersStream(currentUid, currentUserRole),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) return _buildErrorState(snapshot.error.toString());
-              
-              if (!snapshot.hasData) {
-                return const SliverToBoxAdapter(
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(40.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-                );
-              }
-
-              // LÓGICA DE FILTRADO EN TIEMPO REAL
-              final allWorkers = snapshot.data!;
-              final workers = allWorkers.where((u) {
-                final name = (u['name'] ?? '').toString().toLowerCase();
-                final email = (u['email'] ?? '').toString().toLowerCase();
-                final role = (u['role'] ?? '').toString().toLowerCase();
-                final supervisorId = (u['supervisor_id'] ?? '').toString(); // Campo del trabajador
-                final query = _searchQuery.toLowerCase();
-
-                // 1. Filtro de búsqueda (Nombre o Email)
-                bool matchesSearch = name.contains(query) || email.contains(query);
-                
-                // 2. Filtro de Rol (Solo aplica si no eres supervisor, ya que al supervisor le ocultamos los chips)
-                bool matchesRole = _selectedFilter == "Todos" || role == _selectedFilter.toLowerCase();
-
-                // 3. Regla de Privacidad: Nadie (excepto otro SuperAdmin) ve Super Admins
-                bool isNotSuperAdmin = role != 'super_admin' || currentUserRole == 'super_admin';
-
-                // --- 4. NUEVA REGLA PARA SUPERVISOR ---
-                bool matchesHierarchy = true;
-                if (currentUserRole == 'supervisor') {
-                  // El supervisor SOLO ve a los que tienen su UID asignado
-                  matchesHierarchy = supervisorId == currentUid;
-                }
-
-                // Devolvemos el usuario solo si cumple TODAS las condiciones
-                return matchesSearch && matchesRole && isNotSuperAdmin && matchesHierarchy;
-              }).toList();
-
-              // Estado vacío personalizado
-              if (workers.isEmpty) {
-                return SliverToBoxAdapter(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(40),
-                      child: Column(
-                        children: [
-                          Icon(Icons.person_search, size: 50, color: Colors.grey[400]),
-                          const SizedBox(height: 10),
-                          Text(
-                            currentUserRole == 'supervisor' 
-                              ? "No tienes trabajadores asignados todavía"
-                              : "No se encontraron resultados",
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }
-              return SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) => _workerCard(context, workers[i]),
-                    childCount: workers.length,
-                  ),
-                ),
-              );
-            },
-          ),
+          _buildSearchAndFilters(),
+          _buildSectionHeader(context),
+          _buildUserList(),
           const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
       ),
     );
   }
 
-  // --- LÓGICA DE USUARIOS ---
-  void _showAddUserBottomSheet(BuildContext context) {
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
-    String selectedRole = 'worker';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 15,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 50,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              const Text("Invitar",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo)),
-              const SizedBox(height: 5),
-              const Text("Se generará un código de acceso para el nuevo integrante.",
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
-              const SizedBox(height: 25),
-
-              _buildInputLabel("Nombre Completo"),
-              TextField(
-                controller: nameController,
-                textCapitalization: TextCapitalization.words,
-                decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez"),
-              ),
-              const SizedBox(height: 20),
-
-              _buildInputLabel("Correo Electrónico"),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com"),
-              ),
-              const SizedBox(height: 20),
-
-              _buildInputLabel("Rol de Usuario"),
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                value: selectedRole,
-                dropdownColor: Colors.white,
-                items: const [
-                  DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
-                  DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
-                  DropdownMenuItem(value: 'admin', child: Text("Administrador")),
-                ],
-                onChanged: (val) => selectedRole = val!,
-                decoration: _inputDecoration(Icons.badge_outlined, ""),
-              ),
-              const SizedBox(height: 30),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("CANCELAR", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.indigo,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      elevation: 0,
-                    ),
-                    onPressed: () async {
-                      if (nameController.text.isEmpty || emailController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Rellena todos los campos")));
-                        return;
-                      }
-
-                      final String code = await _db.adminCreateUser(
-                          email: emailController.text.trim(),
-                          name: nameController.text.trim(),
-                          role: selectedRole);
-
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        if (code != "ERROR") {
-                          _showSuccessDialog(context, nameController.text.trim(), code);
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Error al crear la invitación")));
-                        }
-                      }
-                    },
-                    child: const Text("CREAR",
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showSuccessDialog(BuildContext context, String name, String code) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 60),
-              const SizedBox(height: 15),
-              Text("¡Invitación Lista!",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.indigo[900])),
-              const SizedBox(height: 8),
-              Text("Para: $name", textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 25),
-              const Text("Toca el código para copiarlo:", style: TextStyle(fontSize: 13, color: Colors.grey)),
-              const SizedBox(height: 12),
-              
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: code));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("✅ Código $code copiado"), behavior: SnackBarBehavior.floating),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(15),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo[50],
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.indigo.withOpacity(0.3), width: 2),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Text(code, textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 5, color: Colors.indigo)),
-                        ),
-                        const Icon(Icons.copy_all_rounded, color: Colors.indigo),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-            ],
-          ),
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-              child: const Text("ENTENDIDO"),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: Text(label,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
-    );
-  }
-
-  InputDecoration _inputDecoration(IconData icon, String hint) {
-    return InputDecoration(
-      prefixIcon: Icon(icon, color: Colors.indigo, size: 20),
-      hintText: hint,
-      filled: true,
-      fillColor: Colors.grey[50],
-      contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
-      border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
-      enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
-    );
-  }
-
-  Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
-    final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
-    final String? accessCode = worker['auth_code']?.toString();
-    
-    // 1. LÓGICA DE ROLES ESPECIALES (EXENTOS)
-    final bool isPrivileged = role == 'admin' || role == 'super_admin';
-
-    // 2. LÓGICA DE EXPIRACIÓN (Solo aplica si NO es privilegiado)
-    final bool isValidated = worker['is_validated'] ?? false;
-    final dynamic rawExpiry = worker['auth_valid_until'];
-    DateTime? expiryDate;
-
-    if (rawExpiry is Timestamp) {
-      expiryDate = rawExpiry.toDate();
-    } else if (rawExpiry is String) {
-      expiryDate = DateTime.tryParse(rawExpiry);
-    }
-
-    // Si es privileged, NUNCA está expirado. Si no, evaluamos validación y fecha.
-    final bool isExpired = !isPrivileged && (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
-    
-    final String expiryText = _formatDate(worker['auth_valid_until']);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02), 
-            blurRadius: 10, 
-            offset: const Offset(0, 4)
-          )
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            // Si es privilegiado, siempre azul. Si no, depende de isExpired.
-            color: isExpired ? Colors.red[50] : Colors.indigo[50],
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: Icon(
-            role == 'admin' || role == 'super_admin'
-                ? Icons.admin_panel_settings 
-                : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person),
-            color: isExpired ? Colors.red : Colors.indigo,
-          ),
-        ),
-        title: Row(
-          children: [
-            Text(worker['name'] ?? 'Usuario',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(role.toUpperCase(),
-                style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w600)),
-            
-            // Solo mostramos la fecha de vencimiento si NO es un administrador
-            if (!isPrivileged) ...[
-              const SizedBox(height: 4),
-              Text("Vence: $expiryText",
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: isExpired ? Colors.red : Colors.green[700],
-                      fontWeight: FontWeight.w600)),
-            ],
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          icon: const Icon(Icons.more_vert_rounded),
-          onSelected: (val) => _handleMenuAction(context, val, worker),
-          itemBuilder: (context) {
-            final String workerRole = (worker['role'] ?? '').toString().toLowerCase();
-            bool canChangeRole = workerRole != 'super_admin' && currentUserRole != 'supervisor';
-
-            return [
-              const PopupMenuItem(
-                value: 'view',
-                child: ListTile(
-                  leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo),
-                  title: Text("Clientes", style: TextStyle(fontSize: 14)),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-
-              if (canChangeRole)
-                const PopupMenuItem(
-                  value: 'change_role',
-                  child: ListTile(
-                    leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple),
-                    title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-
-              // Ocultamos "Copiar Código" y "Renovar" para Admins en el menú si quieres limpiar más la UI
-              if (!isPrivileged && accessCode != null && accessCode.isNotEmpty)
-                PopupMenuItem(
-                  value: 'copy_code',
-                  child: ListTile(
-                    leading: const Icon(Icons.content_copy_rounded, color: Colors.blue),
-                    title: const Text("Copiar Código", style: TextStyle(fontSize: 14)),
-                    subtitle: Text(accessCode, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-
-              if (!isPrivileged)
-                const PopupMenuItem(
-                  value: 'renew',
-                  child: ListTile(
-                    leading: Icon(Icons.key_outlined, color: Colors.orange),
-                    title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-            ];
-          },
-        ),
-      ),
-    );
-  }
-    
-  String _formatDate(dynamic dateData) {
-    if (dateData == null) return "SIN ACCESO";
-    
-    try {
-      DateTime? date;
-
-      if (dateData is Timestamp) {
-        // Si es el formato nuevo de Firebase
-        date = dateData.toDate();
-      } else if (dateData is String) {
-        // Si es el formato antiguo de texto
-        date = DateTime.tryParse(dateData);
-      }
-
-      if (date != null) {
-        return DateFormat('dd/MM/yy').format(date);
-      } else {
-        return "ERROR";
-      }
-    } catch (e) {
-      return "ERROR";
-    }
-  }
-
-  void _showChangeRoleDialog(BuildContext context, Map<String, dynamic> user) {
-      String selectedRole = (user['role'] ?? 'worker').toString().toLowerCase();
-      final bool isTargetSuperAdmin = user['role'] == 'super_admin';
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: SizedBox(
-            // Forzamos un ancho mínimo para evitar el overflow y que se vea más amplio
-            width: MediaQuery.of(context).size.width * 0.9,
-            child: Column(
-              mainAxisSize: MainAxisSize.min, // Importante para diálogos
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Selecciona el nuevo nivel de acceso para:",
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "${user['name']}",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<String>(
-                  isExpanded: true, // Esto evita que el texto del dropdown cause overflow interno
-                  value: selectedRole,
-                  items: const [
-                    DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
-                    DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
-                    DropdownMenuItem(value: 'admin', child: Text("Administrador")),
-                  ],
-                  onChanged: (val) => selectedRole = val!,
-                  decoration: _inputDecoration(Icons.badge_outlined, "Rol de usuario"),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context), 
-              child: Text("CANCELAR", style: TextStyle(color: Colors.grey[600])),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo, 
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-              ),
-              onPressed: () async {
-                try {
-                  await _db.updateUserRole(
-                    targetUid: user['uid'],
-                    newRole: selectedRole,
-                    isTargetSuperAdmin: isTargetSuperAdmin,
-                  );
-
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("✅ Rol actualizado correctamente"),
-                      backgroundColor: Colors.green,
-                      behavior: SnackBarBehavior.floating,
-                    )
-                  );
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("❌ Error al actualizar"),
-                      backgroundColor: Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                    )
-                  );
-                }
-              },
-              child: const Text("ACTUALIZAR"),
-            ),
-          ],
-        ),
-      );
-    }
-    
-  void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
-    if (action == 'view') {
-      Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (context) => WorkerClientsScreen(
-                    workerName: user['name'] ?? 'Desconocido',
-                    workerId: user['uid'],
-                  )));
-    }else if (action == 'change_role') {
-      _showChangeRoleDialog(context, user);
-    }else if (action == 'copy_code') {
-      final String code = (user['auth_code'] ?? '').toString();
-      Clipboard.setData(ClipboardData(text: code)).then((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Código $code copiado")),
-        );
-      });
-    } else if (action == 'renew') {
-      _showRenewDialog(context, user);
-    }
-  }
-
-  void _showRenewDialog(BuildContext context, Map<String, dynamic> user) {
-    int selectedDays = 30;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Text(
-                "Extender Acceso",
-                style: TextStyle(
-                  color: Colors.indigo[900],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              // USAMOS SingleChildScrollView PARA EVITAR OVERFLOW
-              content: SingleChildScrollView(
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.8, // Ajusta el ancho al 80%
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Selecciona el periodo para ${user['name']}.",
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      const SizedBox(height: 20),
-                      DropdownButtonFormField<int>(
-                        isExpanded: true, // Evita overflow horizontal dentro del botón
-                        value: selectedDays,
-                        items: const [
-                          DropdownMenuItem(value: 7, child: Text("1 Semana")),
-                          DropdownMenuItem(value: 30, child: Text("1 Mes")),
-                          DropdownMenuItem(value: 365, child: Text("1 Año")),
-                        ],
-                        onChanged: (val) {
-                          setDialogState(() {
-                            selectedDays = val!;
-                          });
-                        },
-                        decoration: _inputDecoration(
-                          Icons.calendar_today_outlined, 
-                          "Periodo de acceso"
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("CANCELAR"),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onPressed: () async {
-                    await _db.renewUserAccess(user['uid'], selectedDays);
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Acceso actualizado para ${user['name']}"),
-                        backgroundColor: Colors.green,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  child: const Text("ACTUALIZAR"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
+  // --- COMPONENTES DE UI ---
 
   Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
@@ -861,56 +88,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
       backgroundColor: Colors.indigo[800],
       actions: [
         IconButton(
-          icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 28),
+          icon: const Icon(Icons.logout_rounded, color: Colors.white),
           onPressed: () => _handleLogout(context),
-        ),
+        )
       ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.indigo[900]!, Colors.indigo[600]!],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+              colors: [Colors.indigo[900]!, Colors.indigo[600]!],
             ),
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
-                // spaceAround distribuye el espacio de manera equitativa entre los elementos
-                mainAxisAlignment: MainAxisAlignment.spaceAround, 
                 children: [
-                  // Usamos Expanded para que cada botón ocupe el mismo espacio disponible
                   Expanded(
                     child: _topMenuButton(
-                      context,
-                      Icons.description_rounded,
+                      context, 
+                      Icons.description_rounded, 
                       "Plantillas",
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const AdminContractDashboard()),
-                      ),
+                      () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractDashboard())),
                     ),
                   ),
-
-                  if (currentUserRole == 'super_admin' || 
-                      currentUserRole == 'admin' || 
-                      currentUserRole == 'supervisor') ...[
-                    Expanded(
-                      child: _topMenuButton(
-                        context,
-                        Icons.group_work_rounded,
-                        "Clientes",
-                        () {
-                        Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const UserDashboard()),
-                            );
-                          },
-                      ),
+                  Expanded(
+                    child: _topMenuButton(
+                      context, 
+                      Icons.group_work_rounded, 
+                      "Clientes",
+                      () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserDashboard())),
                     ),
-                  ],
+                  ),
+                  // REGLA: Todos pueden ver el botón de invitar, la restricción está dentro del formulario
                   Expanded(
                     child: _topMenuButton(
                       context, 
@@ -945,17 +157,367 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: Icon(icon, color: Colors.white, size: 28),
           ),
           const SizedBox(height: 8),
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 
-  Widget _buildErrorState(String error) {
+  Widget _buildSearchAndFilters() {
     return SliverToBoxAdapter(
-      child: Center(child: Text("Error: $error", style: const TextStyle(color: Colors.red))),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: _inputDecoration(Icons.search, "Buscar por nombre o correo...").copyWith(
+                suffixIcon: _searchQuery.isNotEmpty 
+                  ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = "");
+                    }) 
+                  : null
+              ),
+            ),
+            // Solo Super Admin y Admin ven filtros de rol
+            if (currentUserRole != 'supervisor') ...[
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: ["Todos", "Admin", "Supervisor", "Worker"].map((filter) {
+                    bool isSelected = _selectedFilter == filter;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(filter == "Worker" ? "Trabajadores" : filter),
+                        selected: isSelected,
+                        onSelected: (val) => setState(() => _selectedFilter = filter),
+                        selectedColor: Colors.indigo[100],
+                        checkmarkColor: Colors.indigo,
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget _buildSectionHeader(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("USUARIOS", style: TextStyle(fontWeight: FontWeight.w800, color: Colors.blueGrey, fontSize: 13, letterSpacing: 1.5)),
+            if (currentUserRole == 'admin' || currentUserRole == 'super_admin')
+              ElevatedButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PendingInvitationsPage())),
+                label: const Text("INVITACIONES", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+                icon: const Icon(Icons.mail_outline, size: 16),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserList() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _db.getUsersStream(currentUserId, currentUserRole),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return SliverToBoxAdapter(child: Center(child: Text("Error: ${snapshot.error}")));
+        if (!snapshot.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+
+        final users = snapshot.data!.where((u) {
+          final name = (u['name'] ?? '').toString().toLowerCase();
+          final email = (u['email'] ?? '').toString().toLowerCase();
+          final role = (u['role'] ?? '').toString().toLowerCase();
+          final supervisorId = (u['supervisor_id'] ?? '').toString();
+          
+          bool matchesSearch = name.contains(_searchQuery.toLowerCase()) || email.contains(_searchQuery.toLowerCase());
+          bool matchesFilter = _selectedFilter == "Todos" || role == _selectedFilter.toLowerCase();
+          
+          // REGLA DE VISIBILIDAD DE HISTORIAL
+          bool matchesHierarchy = true;
+          if (currentUserRole == 'supervisor') {
+            matchesHierarchy = (role == 'worker' && supervisorId == currentUserId);
+          } else if (currentUserRole == 'admin') {
+            matchesHierarchy = (role != 'super_admin' && role != 'admin');
+          }
+
+          return matchesSearch && matchesFilter && matchesHierarchy;
+        }).toList();
+
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate((context, i) => _workerCard(context, users[i]), childCount: users.length),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- CARD DE USUARIO ---
+
+  Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
+    final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
+    final String? accessCode = worker['auth_code']?.toString();
+    final bool isPrivileged = role == 'admin' || role == 'super_admin';
+    final bool isValidated = worker['is_validated'] ?? false;
+    final dynamic rawExpiry = worker['auth_valid_until'];
+    
+    DateTime? expiryDate;
+    if (rawExpiry is Timestamp) expiryDate = rawExpiry.toDate();
+    else if (rawExpiry is String) expiryDate = DateTime.tryParse(rawExpiry);
+
+    final bool isExpired = !isPrivileged && (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 52, height: 52,
+          decoration: BoxDecoration(color: isExpired ? Colors.red[50] : Colors.indigo[50], borderRadius: BorderRadius.circular(15)),
+          child: Icon(isPrivileged ? Icons.admin_panel_settings : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person), color: isExpired ? Colors.red : Colors.indigo),
+        ),
+        title: Text(worker['name'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(role.toUpperCase(), style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w600)),
+            if (!isPrivileged)
+              Text("Vence: ${_formatDate(worker['auth_valid_until'])}", style: TextStyle(fontSize: 11, color: isExpired ? Colors.red : Colors.green[700], fontWeight: FontWeight.w600)),
+          ],
+        ),
+        trailing: PopupMenuButton<String>(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          icon: const Icon(Icons.more_vert_rounded),
+          onSelected: (val) => _handleMenuAction(context, val, worker),
+          itemBuilder: (context) {
+            bool canManage = currentUserRole != 'supervisor';
+            return [
+              const PopupMenuItem(value: 'view', child: ListTile(leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo), title: Text("Clientes", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
+              if (canManage) ...[
+                const PopupMenuItem(value: 'change_role', child: ListTile(leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple), title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
+                if (!isPrivileged && accessCode != null)
+                  PopupMenuItem(value: 'copy_code', child: ListTile(leading: const Icon(Icons.content_copy_rounded, color: Colors.blue), title: const Text("Copiar Código", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
+                if (!isPrivileged)
+                  const PopupMenuItem(value: 'renew', child: ListTile(leading: Icon(Icons.key_outlined, color: Colors.orange), title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
+              ]
+            ];
+          },
+        ),
+      ),
+    );
+  }
+
+  // --- DIÁLOGOS Y FORMULARIOS ---
+
+  void _showAddUserBottomSheet(BuildContext context) {
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    
+    // Lógica de rol inicial según quién invita
+    String selectedRole = 'worker';
+    if (currentUserRole == 'admin') selectedRole = 'supervisor';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+        padding: EdgeInsets.only(left: 20, right: 20, top: 15, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+            const Text("Nueva Invitación", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo)),
+            const SizedBox(height: 25),
+            _buildInputLabel("Nombre Completo"),
+            TextField(controller: nameController, decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez")),
+            const SizedBox(height: 20),
+            _buildInputLabel("Correo Electrónico"),
+            TextField(controller: emailController, decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com")),
+            const SizedBox(height: 20),
+            _buildInputLabel("Rol"),
+            DropdownButtonFormField<String>(
+              value: selectedRole,
+              // FILTRO DE ROLES SEGÚN HISTORIAL:
+              items: _getAvailableRolesForInvitation(), 
+              onChanged: (val) => selectedRole = val!,
+              decoration: _inputDecoration(Icons.badge_outlined, ""),
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              onPressed: () async {
+                if (nameController.text.isEmpty || emailController.text.isEmpty) return;
+                final code = await _db.adminCreateUser(email: emailController.text.trim(), name: nameController.text.trim(), role: selectedRole);
+                Navigator.pop(context);
+                if (code != "ERROR") _showSuccessDialog(context, nameController.text.trim(), code);
+              },
+              child: const Text("ENVIAR INVITACIÓN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper para filtrar roles en el Dropdown de invitación
+  List<DropdownMenuItem<String>> _getAvailableRolesForInvitation() {
+    if (currentUserRole == 'supervisor') {
+      return [const DropdownMenuItem(value: 'worker', child: Text("Trabajador"))];
+    } else if (currentUserRole == 'admin') {
+      return [const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor"))];
+    } else {
+      return [
+        const DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+        const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
+        const DropdownMenuItem(value: 'admin', child: Text("Administrador")),
+      ];
+    }
+  }
+
+  void _showSuccessDialog(BuildContext context, String name, String code) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("¡Invitación para $name!", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 10),
+            const Text("Código de acceso:", textAlign: TextAlign.center),
+            const SizedBox(height: 15),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), 
+              decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(10)), 
+              child: Text(code, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.indigo))
+            ),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("CERRAR"))],
+      ),
+    );
+  }
+
+  void _showChangeRoleDialog(BuildContext context, Map<String, dynamic> user) {
+    String role = user['role'] ?? 'worker';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Cambiar Rol"),
+        content: DropdownButtonFormField<String>(
+          value: role,
+          items: const [
+            DropdownMenuItem(value: 'worker', child: Text("Trabajador")), 
+            DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")), 
+            DropdownMenuItem(value: 'admin', child: Text("Administrador"))
+          ],
+          onChanged: (val) => role = val!,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
+          ElevatedButton(onPressed: () async {
+            await FirebaseFirestore.instance.collection('users').doc(user['uid']).update({'role': role});
+            Navigator.pop(context);
+          }, child: const Text("GUARDAR")),
+        ],
+      ),
+    );
+  }
+
+  void _showRenewDialog(BuildContext context, Map<String, dynamic> user) {
+    int days = 30;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Renovar Acceso"),
+        content: StatefulBuilder(
+          builder: (context, setInternalState) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Días de acceso extra:"),
+              DropdownButton<int>(
+                value: days,
+                isExpanded: true,
+                items: [7, 15, 30, 60, 90].map((d) => DropdownMenuItem(value: d, child: Text("$d días"))).toList(),
+                onChanged: (val) => setInternalState(() => days = val!),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
+          ElevatedButton(onPressed: () async {
+            await _db.renewUserAccess(user['uid'], days);
+            Navigator.pop(context);
+          }, child: const Text("RENOVAR")),
+        ],
+      ),
+    );
+  }
+
+  // --- HELPERS ---
+
+  String _formatDate(dynamic dateData) {
+    if (dateData == null) return "SIN FECHA";
+    if (dateData is Timestamp) return DateFormat('dd/MM/yy').format(dateData.toDate());
+    return dateData.toString();
+  }
+
+  InputDecoration _inputDecoration(IconData icon, String hint) {
+    return InputDecoration(
+      prefixIcon: Icon(icon, color: Colors.indigo, size: 20),
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.grey[50],
+      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.indigo)),
+    );
+  }
+
+  Widget _buildInputLabel(String label) {
+    return Padding(padding: const EdgeInsets.only(bottom: 8, left: 4), child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)));
+  }
+
+  void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
+    switch (action) {
+      case 'view':
+        Navigator.push(context, MaterialPageRoute(builder: (context) => WorkerClientsScreen(workerName: user['name'] ?? '', workerId: user['uid'])));
+        break;
+      case 'change_role':
+        _showChangeRoleDialog(context, user);
+        break;
+      case 'copy_code':
+        Clipboard.setData(ClipboardData(text: user['auth_code'] ?? ''));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Código copiado al portapapeles")));
+        break;
+      case 'renew':
+        _showRenewDialog(context, user);
+        break;
+    }
   }
 }
