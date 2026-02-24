@@ -378,8 +378,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   )
                 ),
                 
-                // AQUÍ ES DONDE USAMOS 'accessCode'
-                // Al ponerlo aquí, el warning desaparece porque Flutter ve que la variable es necesaria
                 if (!isPrivileged && accessCode != null && accessCode.isNotEmpty)
                   const PopupMenuItem(
                     value: 'copy_code', 
@@ -433,58 +431,69 @@ class _AdminDashboardState extends State<AdminDashboard> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-        padding: EdgeInsets.only(left: 20, right: 20, top: 15, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 20),
-            const Text("Nueva Invitación", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo)),
-            const SizedBox(height: 25),
-            _buildInputLabel("Nombre Completo"),
-            TextField(controller: nameController, decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez")),
-            const SizedBox(height: 20),
-            _buildInputLabel("Correo Electrónico"),
-            TextField(controller: emailController, decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com")),
-            const SizedBox(height: 20),
-            _buildInputLabel("Rol"),
-            DropdownButtonFormField<String>(
-              value: selectedRole,
-              items: _getAvailableRolesForInvitation(), 
-              onChanged: (val) => selectedRole = val!,
-              decoration: _inputDecoration(Icons.badge_outlined, ""),
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-              onPressed: () async {
-                if (nameController.text.isEmpty || emailController.text.isEmpty) return;
-                final code = await _db.adminCreateUser(email: emailController.text.trim(), name: nameController.text.trim(), role: selectedRole);
-                Navigator.pop(context);
-                if (code != "ERROR") _showSuccessDialog(context, nameController.text.trim(), code);
-              },
-              child: const Text("ENVIAR INVITACIÓN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
+        decoration: const BoxDecoration(
+          color: Colors.white, 
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30))
+        ),
+        padding: EdgeInsets.only(
+          left: 20, 
+          right: 20, 
+          top: 15, 
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20
+        ),
+        child: SingleChildScrollView( // Esto evita el RenderFlex overflow
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 20),
+              const Text("Nueva Invitación", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo)),
+              const SizedBox(height: 25),
+              _buildInputLabel("Nombre Completo"),
+              TextField(controller: nameController, decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez")),
+              const SizedBox(height: 20),
+              _buildInputLabel("Correo Electrónico"),
+              TextField(controller: emailController, decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com")),
+              const SizedBox(height: 20),
+              _buildInputLabel("Rol"),
+              DropdownButtonFormField<String>(
+                value: selectedRole,
+                // VOLVEMOS A TU LÓGICA ORIGINAL AQUÍ:
+                items: currentUserRole == 'admin' 
+                  ? [const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor"))]
+                  : [
+                      const DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+                      const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
+                      const DropdownMenuItem(value: 'admin', child: Text("Administrador")),
+                    ],
+                onChanged: (val) => selectedRole = val!,
+                decoration: _inputDecoration(Icons.badge_outlined, ""),
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo, 
+                  padding: const EdgeInsets.symmetric(vertical: 15), 
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                ),
+                onPressed: () async {
+                  if (nameController.text.isEmpty || emailController.text.isEmpty) return;
+                  final code = await _db.adminCreateUser(
+                    email: emailController.text.trim(), 
+                    name: nameController.text.trim(), 
+                    role: selectedRole
+                  );
+                  Navigator.pop(context);
+                  if (code != "ERROR") _showSuccessDialog(context, nameController.text.trim(), code);
+                },
+                child: const Text("ENVIAR INVITACIÓN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
         ),
       ),
     );
-  }
-
-  List<DropdownMenuItem<String>> _getAvailableRolesForInvitation() {
-    if (currentUserRole == 'supervisor') {
-      return [const DropdownMenuItem(value: 'worker', child: Text("Trabajador"))];
-    } else if (currentUserRole == 'admin') {
-      return [const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor"))];
-    } else {
-      return [
-        const DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
-        const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
-        const DropdownMenuItem(value: 'admin', child: Text("Administrador")),
-      ];
-    }
   }
 
   void _showSuccessDialog(BuildContext context, String name, String code) {
@@ -569,11 +578,32 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
             onPressed: () async {
+              final String newRole = role;
+              final String oldRole = (user['role'] ?? 'worker').toString().toLowerCase();
+
+              // LÓGICA DE REASIGNACIÓN: Si el supervisor cambia de rol y tiene personal...
+              if (oldRole == 'supervisor' && newRole != 'supervisor') {
+                final workers = await FirebaseFirestore.instance
+                    .collection('users')
+                    .where('supervisor_id', isEqualTo: user['uid'])
+                    .get();
+
+                if (workers.docs.isNotEmpty) {
+                  Navigator.pop(context); // Cerramos el diálogo actual
+                  _showReassignAndProceedDialog(
+                    outgoingSupervisor: user,
+                    onComplete: (newSupId) async {
+                      await FirebaseFirestore.instance.collection('users').doc(user['uid']).update({'role': newRole});
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rol actualizado y personal reasignado.")));
+                    }
+                  );
+                  return;
+                }
+              }
+
               await FirebaseFirestore.instance.collection('users').doc(user['uid']).update({'role': role});
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Rol actualizado con éxito"))
-              );
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rol actualizado con éxito")));
             }, 
             child: const Text("GUARDAR", style: TextStyle(color: Colors.white)),
           ),
@@ -613,75 +643,97 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  String _formatDate(dynamic dateData) {
-    if (dateData == null) return "SIN FECHA";
-    if (dateData is Timestamp) return DateFormat('dd/MM/yy').format(dateData.toDate());
-    return dateData.toString();
-  }
+  // --- LÓGICA DE REASIGNACIÓN Y ELIMINACIÓN ---
 
-  InputDecoration _inputDecoration(IconData icon, String hint) {
-    return InputDecoration(
-      prefixIcon: Icon(icon, color: Colors.indigo, size: 20),
-      hintText: hint,
-      filled: true,
-      fillColor: Colors.grey[50],
-      contentPadding: const EdgeInsets.symmetric(vertical: 15),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.indigo)),
-    );
-  }
+  Future<void> _showReassignAndProceedDialog({
+    required Map<String, dynamic> outgoingSupervisor,
+    required Function(String newSupervisorId) onComplete,
+  }) async {
+    final query = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'supervisor')
+        .get();
 
-  Widget _buildInputLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: Text(
-        label,
-        softWrap: true, 
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-          color: Colors.blueGrey,
+    final List<Map<String, dynamic>> otherSupervisors = query.docs
+        .map((doc) => doc.data())
+        .where((data) => data['uid'] != outgoingSupervisor['uid'])
+        .toList();
+
+    if (otherSupervisors.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("RETO TÉCNICO: No hay otros supervisores para heredar el personal. Crea otro supervisor primero."),
+          backgroundColor: Colors.red,
+        )
+      );
+      return;
+    }
+
+    String? selectedId = otherSupervisors.first['uid'];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setST) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Reasignación de Personal"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Los trabajadores de ${outgoingSupervisor['name']} necesitan un nuevo supervisor antes de continuar."),
+              const SizedBox(height: 20),
+              DropdownButtonFormField<String>(
+                value: selectedId,
+                isExpanded: true,
+                items: otherSupervisors.map((s) => DropdownMenuItem(
+                  value: s['uid'] as String,
+                  child: Text(s['name'] ?? 'Sin nombre'),
+                )).toList(),
+                onChanged: (val) => setST(() => selectedId = val),
+                decoration: _inputDecoration(Icons.person_pin_rounded, ""),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+              onPressed: () async {
+                final nav = Navigator.of(context);
+                final workersQuery = await FirebaseFirestore.instance
+                    .collection('users')
+                    .where('supervisor_id', isEqualTo: outgoingSupervisor['uid'])
+                    .get();
+
+                WriteBatch batch = FirebaseFirestore.instance.batch();
+                for (var doc in workersQuery.docs) {
+                  batch.update(doc.reference, {'supervisor_id': selectedId});
+                }
+                await batch.commit();
+                
+                nav.pop();
+                onComplete(selectedId!);
+              },
+              child: const Text("REASIGNAR Y CONTINUAR", style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
-    switch (action) {
-      case 'view':
-        Navigator.push(context, MaterialPageRoute(builder: (context) => WorkerClientsScreen(workerName: user['name'] ?? '', workerId: user['uid'])));
-        break;
-      case 'change_role':
-        _showChangeRoleDialog(context, user);
-        break;
-      case 'copy_code':
-        Clipboard.setData(ClipboardData(text: user['auth_code'] ?? ''));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Código copiado al portapapeles")));
-        break;
-      case 'renew':
-        _showRenewDialog(context, user);
-        break;
-      case 'delete':  
-        _deleteUser(user);
-        break;
-    }
-  }
-
-  Future<void> _deleteUser(Map<String, dynamic> user) async {
-    final String roleToDelete = user['role'] ?? 'worker';
+  void _deleteUser(Map<String, dynamic> user) async {
+    final String roleToDelete = (user['role'] ?? 'worker').toString().toLowerCase();
     final String uidToDelete = user['uid'];
 
-    // Solo el super_admin tiene este poder
     if (currentUserRole != 'super_admin') return;
 
-    // Si es un trabajador, se puede borrar sin restricciones de conteo
     if (roleToDelete == 'worker') {
-      _executeDeletion(uidToDelete, user['name']);
+      _confirmDeletion(user);
       return;
     }
 
-    // Si es Admin o Supervisor, verificamos cuántos quedan en el sistema
     try {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
@@ -689,7 +741,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
           .get();
 
       if (querySnapshot.docs.length <= 1) {
-        // Si hay 1 o menos, bloqueamos la acción
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("No se puede eliminar al último ${roleToDelete.toUpperCase()} del sistema."),
@@ -697,7 +748,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         );
       } else {
-        // Si hay más de uno, confirmamos con el usuario
+        // LÓGICA DE REASIGNACIÓN PARA BORRADO:
+        if (roleToDelete == 'supervisor') {
+          final workers = await FirebaseFirestore.instance
+              .collection('users')
+              .where('supervisor_id', isEqualTo: uidToDelete)
+              .get();
+
+          if (workers.docs.isNotEmpty) {
+            _showReassignAndProceedDialog(
+              outgoingSupervisor: user,
+              onComplete: (newSupId) => _confirmDeletion(user),
+            );
+            return;
+          }
+        }
         _confirmDeletion(user);
       }
     } catch (e) {
@@ -728,24 +793,66 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _executeDeletion(String uid, String name) async {
     try {
-      // Borramos el documento de Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).delete();
-      
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text("Usuario eliminado de la base de datos"),
-          content: Text("IMPORTANTE: Para que $name pueda volver a registrarse con el mismo correo, debes eliminar su cuenta manualmente desde la consola de Firebase Authentication (sección 'Users')."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context), 
-              child: const Text("ENTENDIDO")
-            )
-          ],
+          title: const Text("Usuario eliminado"),
+          content: Text("IMPORTANTE: Para que $name pueda volver a registrarse, debes eliminar su cuenta manualmente desde la consola de Firebase Auth."),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("ENTENDIDO"))],
         ),
       );
     } catch (e) {
       debugPrint("Error eliminando: $e");
+    }
+  }
+
+  // --- HELPERS FINALES ---
+
+  String _formatDate(dynamic dateData) {
+    if (dateData == null) return "SIN FECHA";
+    if (dateData is Timestamp) return DateFormat('dd/MM/yy').format(dateData.toDate());
+    return dateData.toString();
+  }
+
+  InputDecoration _inputDecoration(IconData icon, String hint) {
+    return InputDecoration(
+      prefixIcon: Icon(icon, color: Colors.indigo, size: 20),
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.grey[50],
+      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.indigo)),
+    );
+  }
+
+  Widget _buildInputLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)),
+    );
+  }
+
+  void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
+    switch (action) {
+      case 'view':
+        Navigator.push(context, MaterialPageRoute(builder: (context) => WorkerClientsScreen(workerName: user['name'] ?? '', workerId: user['uid'])));
+        break;
+      case 'change_role':
+        _showChangeRoleDialog(context, user);
+        break;
+      case 'copy_code':
+        Clipboard.setData(ClipboardData(text: user['auth_code'] ?? ''));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Código copiado al portapapeles")));
+        break;
+      case 'renew':
+        _showRenewDialog(context, user);
+        break;
+      case 'delete':   
+        _deleteUser(user);
+        break;
     }
   }
 }
