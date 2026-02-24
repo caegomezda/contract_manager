@@ -296,7 +296,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
     final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
+    
+    // ESTA ES LA VARIABLE DE LA DISCORDIA
+    // La declaramos porque la necesitamos para la opción de copiar.
     final String? accessCode = worker['auth_code']?.toString();
+    
     final bool isPrivileged = role == 'admin' || role == 'super_admin';
     final bool isValidated = worker['is_validated'] ?? false;
     final dynamic rawExpiry = worker['auth_valid_until'];
@@ -304,54 +308,112 @@ class _AdminDashboardState extends State<AdminDashboard> {
     DateTime? expiryDate;
     if (rawExpiry is Timestamp) {
       expiryDate = rawExpiry.toDate();
-    // ignore: curly_braces_in_flow_control_structures
-    } else if (rawExpiry is String) expiryDate = DateTime.tryParse(rawExpiry);
+    } else if (rawExpiry is String) {
+      expiryDate = DateTime.tryParse(rawExpiry);
+    }
 
     final bool isExpired = !isPrivileged && (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        borderRadius: BorderRadius.circular(20), 
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 52, height: 52,
-          decoration: BoxDecoration(color: isExpired ? Colors.red[50] : Colors.indigo[50], borderRadius: BorderRadius.circular(15)),
-          child: Icon(isPrivileged ? Icons.admin_panel_settings : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person), color: isExpired ? Colors.red : Colors.indigo),
+          decoration: BoxDecoration(
+            color: isExpired ? Colors.red[50] : Colors.indigo[50], 
+            borderRadius: BorderRadius.circular(15)
+          ),
+          child: Icon(
+            isPrivileged ? Icons.admin_panel_settings : (role == 'supervisor' ? Icons.visibility_rounded : Icons.person), 
+            color: isExpired ? Colors.red : Colors.indigo
+          ),
         ),
-        title: Text(worker['name'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        title: Text(
+          worker['name'] ?? 'Usuario', 
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis, // Solución para el overflow
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(role.toUpperCase(), style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w600)),
             if (!isPrivileged)
-              Text("Vence: ${_formatDate(worker['auth_valid_until'])}", style: TextStyle(fontSize: 11, color: isExpired ? Colors.red : Colors.green[700], fontWeight: FontWeight.w600)),
+              Text(
+                "Vence: ${_formatDate(worker['auth_valid_until'])}", 
+                style: TextStyle(fontSize: 11, color: isExpired ? Colors.red : Colors.green[700], fontWeight: FontWeight.w600)
+              ),
           ],
         ),
         trailing: PopupMenuButton<String>(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (val) => _handleMenuAction(context, val, worker),
-          // Busca dentro del PopupMenuButton en _workerCard
           itemBuilder: (context) {
             bool canManage = currentUserRole != 'supervisor';
             return [
-              const PopupMenuItem(value: 'view', child: ListTile(leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo), title: Text("Clientes", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
+              const PopupMenuItem(
+                value: 'view', 
+                child: ListTile(
+                  leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo), 
+                  title: Text("Clientes", style: TextStyle(fontSize: 14)), 
+                  contentPadding: EdgeInsets.zero, 
+                  visualDensity: VisualDensity.compact
+                )
+              ),
               if (canManage) ...[
-                const PopupMenuItem(value: 'change_role', child: ListTile(leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple), title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
-                // ... otras opciones ...
-              ],
-              // NUEVA OPCIÓN DE ELIMINAR
-              if (currentUserRole == 'super_admin')
                 const PopupMenuItem(
-                  value: 'delete', 
+                  value: 'change_role', 
                   child: ListTile(
-                    leading: Icon(Icons.delete_forever, color: Colors.red), 
-                    title: Text("Eliminar Usuario", style: TextStyle(fontSize: 14, color: Colors.red)), 
+                    leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple), 
+                    title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)), 
                     contentPadding: EdgeInsets.zero, 
                     visualDensity: VisualDensity.compact
                   )
                 ),
+                
+                // AQUÍ ES DONDE USAMOS 'accessCode'
+                // Al ponerlo aquí, el warning desaparece porque Flutter ve que la variable es necesaria
+                if (!isPrivileged && accessCode != null && accessCode.isNotEmpty)
+                  const PopupMenuItem(
+                    value: 'copy_code', 
+                    child: ListTile(
+                      leading: Icon(Icons.content_copy_rounded, color: Colors.blue), 
+                      title: Text("Copiar Código", style: TextStyle(fontSize: 14)), 
+                      contentPadding: EdgeInsets.zero, 
+                      visualDensity: VisualDensity.compact
+                    )
+                  ),
+                  
+                if (!isPrivileged)
+                  const PopupMenuItem(
+                    value: 'renew', 
+                    child: ListTile(
+                      leading: Icon(Icons.key_outlined, color: Colors.orange), 
+                      title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)), 
+                      contentPadding: EdgeInsets.zero, 
+                      visualDensity: VisualDensity.compact
+                    )
+                  ),
+                
+                // Opción de eliminar para Super Admin
+                if (currentUserRole == 'super_admin')
+                  const PopupMenuItem(
+                    value: 'delete', 
+                    child: ListTile(
+                      leading: Icon(Icons.delete_forever, color: Colors.red), 
+                      title: Text("Eliminar", style: TextStyle(fontSize: 14, color: Colors.red)), 
+                      contentPadding: EdgeInsets.zero, 
+                      visualDensity: VisualDensity.compact
+                    )
+                  ),
+              ]
             ];
           },
         ),
