@@ -27,6 +27,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   String currentUserRole = '';
   String currentUserId = '';
+  bool _isLoadingRole = true; // NUEVO: Para controlar el parpadeo inicial
 
   @override
   void initState() {
@@ -37,11 +38,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void _loadCurrentUserData() {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      setState(() => currentUserId = user.uid);
+      currentUserId = user.uid;
       FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
         if (doc.exists && mounted) {
           setState(() {
             currentUserRole = (doc.data()?['role'] ?? 'worker').toString().toLowerCase();
+            _isLoadingRole = false; // Ya sabemos el rol, podemos mostrar la lista
           });
         }
       });
@@ -64,6 +66,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    // Si aún no sabemos el rol, mostramos un indicador de carga centrado
+    if (_isLoadingRole) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.indigo),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       body: CustomScrollView(
@@ -122,7 +133,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserDashboard())),
                     ),
                   ),
-                  // REGLA: Todos pueden ver el botón de invitar, la restricción está dentro del formulario
                   Expanded(
                     child: _topMenuButton(
                       context, 
@@ -164,6 +174,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildSearchAndFilters() {
+    // Definimos qué opciones de filtro mostrar según el rol
+    List<String> getFilterOptions() {
+      if (currentUserRole == 'super_admin') {
+        return ["Todos", "Admin", "Supervisor", "Worker"];
+      } else if (currentUserRole == 'admin') {
+        // El Admin solo puede filtrar por lo que puede ver: Supervisores y Workers
+        return ["Todos", "Supervisor", "Worker"];
+      } else {
+        return ["Todos"]; // Por si acaso llegara un supervisor aquí
+      }
+    }
+
+    final filterOptions = getFilterOptions();
+
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -181,13 +205,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   : null
               ),
             ),
-            // Solo Super Admin y Admin ven filtros de rol
             if (currentUserRole != 'supervisor') ...[
               const SizedBox(height: 12),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: ["Todos", "Admin", "Supervisor", "Worker"].map((filter) {
+                  children: filterOptions.map((filter) {
                     bool isSelected = _selectedFilter == filter;
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
@@ -198,7 +221,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         selectedColor: Colors.indigo[100],
                         checkmarkColor: Colors.indigo,
                         backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10), 
+                          side: BorderSide(color: isSelected ? Colors.indigo : Colors.grey[300]!)
+                        ),
                       ),
                     );
                   }).toList(),
@@ -248,7 +274,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
           bool matchesSearch = name.contains(_searchQuery.toLowerCase()) || email.contains(_searchQuery.toLowerCase());
           bool matchesFilter = _selectedFilter == "Todos" || role == _selectedFilter.toLowerCase();
           
-          // REGLA DE VISIBILIDAD DE HISTORIAL
           bool matchesHierarchy = true;
           if (currentUserRole == 'supervisor') {
             matchesHierarchy = (role == 'worker' && supervisorId == currentUserId);
@@ -269,8 +294,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // --- CARD DE USUARIO ---
-
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
     final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
     final String? accessCode = worker['auth_code']?.toString();
@@ -279,8 +302,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final dynamic rawExpiry = worker['auth_valid_until'];
     
     DateTime? expiryDate;
-    if (rawExpiry is Timestamp) expiryDate = rawExpiry.toDate();
-    else if (rawExpiry is String) expiryDate = DateTime.tryParse(rawExpiry);
+    if (rawExpiry is Timestamp) {
+      expiryDate = rawExpiry.toDate();
+    // ignore: curly_braces_in_flow_control_structures
+    } else if (rawExpiry is String) expiryDate = DateTime.tryParse(rawExpiry);
 
     final bool isExpired = !isPrivileged && (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
 
@@ -307,17 +332,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (val) => _handleMenuAction(context, val, worker),
+          // Busca dentro del PopupMenuButton en _workerCard
           itemBuilder: (context) {
             bool canManage = currentUserRole != 'supervisor';
             return [
               const PopupMenuItem(value: 'view', child: ListTile(leading: Icon(Icons.folder_copy_outlined, color: Colors.indigo), title: Text("Clientes", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
               if (canManage) ...[
                 const PopupMenuItem(value: 'change_role', child: ListTile(leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple), title: Text("Cambiar Rol", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
-                if (!isPrivileged && accessCode != null)
-                  PopupMenuItem(value: 'copy_code', child: ListTile(leading: const Icon(Icons.content_copy_rounded, color: Colors.blue), title: const Text("Copiar Código", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
-                if (!isPrivileged)
-                  const PopupMenuItem(value: 'renew', child: ListTile(leading: Icon(Icons.key_outlined, color: Colors.orange), title: Text("Renovar Acceso", style: TextStyle(fontSize: 14)), contentPadding: EdgeInsets.zero, visualDensity: VisualDensity.compact)),
-              ]
+                // ... otras opciones ...
+              ],
+              // NUEVA OPCIÓN DE ELIMINAR
+              if (currentUserRole == 'super_admin')
+                const PopupMenuItem(
+                  value: 'delete', 
+                  child: ListTile(
+                    leading: Icon(Icons.delete_forever, color: Colors.red), 
+                    title: Text("Eliminar Usuario", style: TextStyle(fontSize: 14, color: Colors.red)), 
+                    contentPadding: EdgeInsets.zero, 
+                    visualDensity: VisualDensity.compact
+                  )
+                ),
             ];
           },
         ),
@@ -325,13 +359,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // --- DIÁLOGOS Y FORMULARIOS ---
-
   void _showAddUserBottomSheet(BuildContext context) {
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     
-    // Lógica de rol inicial según quién invita
     String selectedRole = 'worker';
     if (currentUserRole == 'admin') selectedRole = 'supervisor';
 
@@ -359,7 +390,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
             _buildInputLabel("Rol"),
             DropdownButtonFormField<String>(
               value: selectedRole,
-              // FILTRO DE ROLES SEGÚN HISTORIAL:
               items: _getAvailableRolesForInvitation(), 
               onChanged: (val) => selectedRole = val!,
               decoration: _inputDecoration(Icons.badge_outlined, ""),
@@ -381,7 +411,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // Helper para filtrar roles en el Dropdown de invitación
   List<DropdownMenuItem<String>> _getAvailableRolesForInvitation() {
     if (currentUserRole == 'supervisor') {
       return [const DropdownMenuItem(value: 'worker', child: Text("Trabajador"))];
@@ -423,25 +452,69 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _showChangeRoleDialog(BuildContext context, Map<String, dynamic> user) {
     String role = user['role'] ?? 'worker';
+    
+    List<DropdownMenuItem<String>> getItems() {
+      List<DropdownMenuItem<String>> menuItems = [];
+
+      if (currentUserRole == 'super_admin') {
+        menuItems = const [
+          DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+          DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
+          DropdownMenuItem(value: 'admin', child: Text("Administrador")),
+          DropdownMenuItem(value: 'super_admin', child: Text("Super Administrador")),
+        ];
+      } else {
+        menuItems = const [
+          DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+          DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
+        ];
+      }
+
+      bool roleExists = menuItems.any((item) => item.value == role);
+      if (!roleExists) {
+        return [
+          ...menuItems,
+          DropdownMenuItem(value: role, child: Text(role.toUpperCase())),
+        ];
+      }
+
+      return menuItems;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Cambiar Rol"),
-        content: DropdownButtonFormField<String>(
-          value: role,
-          items: const [
-            DropdownMenuItem(value: 'worker', child: Text("Trabajador")), 
-            DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")), 
-            DropdownMenuItem(value: 'admin', child: Text("Administrador"))
-          ],
-          onChanged: (val) => role = val!,
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Selecciona el nuevo nivel de acceso:", softWrap: true),
+              const SizedBox(height: 20),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                value: role,
+                items: getItems(),
+                onChanged: (val) => role = val!,
+                decoration: _inputDecoration(Icons.badge_outlined, ""),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
-          ElevatedButton(onPressed: () async {
-            await FirebaseFirestore.instance.collection('users').doc(user['uid']).update({'role': role});
-            Navigator.pop(context);
-          }, child: const Text("GUARDAR")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection('users').doc(user['uid']).update({'role': role});
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Rol actualizado con éxito"))
+              );
+            }, 
+            child: const Text("GUARDAR", style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
@@ -478,8 +551,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // --- HELPERS ---
-
   String _formatDate(dynamic dateData) {
     if (dateData == null) return "SIN FECHA";
     if (dateData is Timestamp) return DateFormat('dd/MM/yy').format(dateData.toDate());
@@ -500,7 +571,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildInputLabel(String label) {
-    return Padding(padding: const EdgeInsets.only(bottom: 8, left: 4), child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      child: Text(
+        label,
+        softWrap: true, 
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+          color: Colors.blueGrey,
+        ),
+      ),
+    );
   }
 
   void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
@@ -518,6 +600,90 @@ class _AdminDashboardState extends State<AdminDashboard> {
       case 'renew':
         _showRenewDialog(context, user);
         break;
+      case 'delete':  
+        _deleteUser(user);
+        break;
+    }
+  }
+
+  Future<void> _deleteUser(Map<String, dynamic> user) async {
+    final String roleToDelete = user['role'] ?? 'worker';
+    final String uidToDelete = user['uid'];
+
+    // Solo el super_admin tiene este poder
+    if (currentUserRole != 'super_admin') return;
+
+    // Si es un trabajador, se puede borrar sin restricciones de conteo
+    if (roleToDelete == 'worker') {
+      _executeDeletion(uidToDelete, user['name']);
+      return;
+    }
+
+    // Si es Admin o Supervisor, verificamos cuántos quedan en el sistema
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: roleToDelete)
+          .get();
+
+      if (querySnapshot.docs.length <= 1) {
+        // Si hay 1 o menos, bloqueamos la acción
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("No se puede eliminar al último ${roleToDelete.toUpperCase()} del sistema."),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      } else {
+        // Si hay más de uno, confirmamos con el usuario
+        _confirmDeletion(user);
+      }
+    } catch (e) {
+      debugPrint("Error al validar conteo: $e");
+    }
+  }
+
+  void _confirmDeletion(Map<String, dynamic> user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Confirmar eliminación"),
+        content: Text("¿Estás seguro de que deseas eliminar a ${user['name']}? Esta acción no se puede deshacer."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(context);
+              _executeDeletion(user['uid'], user['name']);
+            },
+            child: const Text("ELIMINAR", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _executeDeletion(String uid, String name) async {
+    try {
+      // Borramos el documento de Firestore
+      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Usuario eliminado de la base de datos"),
+          content: Text("IMPORTANTE: Para que $name pueda volver a registrarse con el mismo correo, debes eliminar su cuenta manualmente desde la consola de Firebase Authentication (sección 'Users')."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), 
+              child: const Text("ENTENDIDO")
+            )
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint("Error eliminando: $e");
     }
   }
 }
