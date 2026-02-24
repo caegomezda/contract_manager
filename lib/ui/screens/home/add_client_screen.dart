@@ -1,5 +1,6 @@
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // IMPORTACIÓN AGREGADA PARA LOS FORMATTERS
 import 'package:signature/signature.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -7,8 +8,6 @@ import 'package:image_picker/image_picker.dart';
 import '../../../services/database_service.dart';
 import '../admin/terms_editor_screen.dart';
 
-/// Pantalla para registrar un nuevo cliente y capturar su firma/foto.
-/// Permite la asignación manual por parte de un Admin o captura automática por el Worker.
 class AddClientScreen extends StatefulWidget {
   final String? adminAssignId;
   final String? adminAssignName;
@@ -21,15 +20,14 @@ class AddClientScreen extends StatefulWidget {
 class _AddClientScreenState extends State<AddClientScreen> {
   final _nameController = TextEditingController();
   final _idController = TextEditingController();
+  final _amountController = TextEditingController();
   final List<TextEditingController> _addressControllers = [TextEditingController()];
   
   File? _imageFile;
   bool _acceptedTerms = false;
   bool _isLoading = false;
 
-  // Controlador para el pad de firma
   late final SignatureController _signatureController;
-
   String? _selectedContractType;
 
   @override
@@ -47,19 +45,26 @@ class _AddClientScreenState extends State<AddClientScreen> {
     _signatureController.dispose();
     _nameController.dispose();
     _idController.dispose();
+    _amountController.dispose();
     for (var controller in _addressControllers) {
       controller.dispose(); 
     }
     super.dispose();
   }
 
-  // --- LÓGICA DE CAPTURA DE IMAGEN ---
+  bool _isValidAmount(String value) {
+    if (value.isEmpty) return false;
+    final int? val = int.tryParse(value);
+    if (val == null) return false;
+    return val >= 1000 && val <= 30000 && val % 500 == 0;
+  }
+
   Future<void> _takePhoto() async {
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.camera,
-      maxWidth: 800, // Un poco más de resolución para legibilidad
+      maxWidth: 800,
       maxHeight: 800, 
-      imageQuality: 50, // Balance entre peso y nitidez
+      imageQuality: 50,
     );
     if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
@@ -75,25 +80,26 @@ class _AddClientScreenState extends State<AddClientScreen> {
     }
   }
 
-  // --- PERSISTENCIA EN FIREBASE ---
   void _saveContract() async {
     final name = _nameController.text.trim();
     final clientId = _idController.text.trim();
+    final amountText = _amountController.text.trim();
 
-    // Validaciones de seguridad
     if (_imageFile == null) return _showMsg("Es obligatoria la foto de evidencia");
     if (!_acceptedTerms) return _showMsg("Debe aceptar los términos legales");
     if (_signatureController.isEmpty) return _showMsg("El cliente debe firmar el documento");
     if (name.length < 3 || clientId.length < 5) return _showMsg("Datos principales insuficientes");
     if (_selectedContractType == null) return _showMsg("Seleccione un tipo de contrato");
+    
+    if (!_isValidAmount(amountText)) {
+      return _showMsg("El monto debe ser entre 1.000 y 30.000, en múltiplos de 500");
+    }
 
     setState(() => _isLoading = true);
 
     try {
-      // Exportar firma a bytes
       final signatureBytes = await _signatureController.toPngBytes();
       
-      // Limpiar direcciones vacías
       List<String> addresses = _addressControllers
           .map((c) => c.text.trim())
           .where((t) => t.isNotEmpty)
@@ -109,6 +115,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
         manualWorkerName: widget.adminAssignName,
         name: name,
         clientId: clientId,
+        amount: int.parse(amountText), 
         contractType: _selectedContractType!, 
         addresses: addresses,
         signatureBase64: signatureBytes != null ? base64Encode(signatureBytes) : '',
@@ -143,11 +150,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
         backgroundColor: Colors.white, 
         foregroundColor: Colors.black
       ),
-      // Usamos Stack para el modo Offline y bloqueo de UI
       body: Stack(
         children: [
           IgnorePointer(
-            ignoring: _isLoading, // Bloquea toques si está guardando
+            ignoring: _isLoading,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -160,6 +166,8 @@ class _AddClientScreenState extends State<AddClientScreen> {
                   _buildInput("Nombre o Razón Social", _nameController, Icons.business),
                   const SizedBox(height: 15),
                   _buildInput("Identificación (NIT/CC)", _idController, Icons.badge),
+                  const SizedBox(height: 15),
+                  _buildAmountInput(),
                   const SizedBox(height: 25),
                   _buildAddressHeader(),
                   ..._buildAddressList(),
@@ -185,8 +193,6 @@ class _AddClientScreenState extends State<AddClientScreen> {
               ),
             ),
           ),
-
-          // Capa de carga para protección de estado
           if (_isLoading)
             Container(
               color: Colors.black.withValues(alpha: 0.4),
@@ -215,7 +221,27 @@ class _AddClientScreenState extends State<AddClientScreen> {
       ),
     );
   }
-  // --- COMPONENTES VISUALES ---
+
+  Widget _buildAmountInput() {
+    return TextField(
+      controller: _amountController,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      onChanged: (val) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: "Monto del Contrato",
+        hintText: "Eje: 1000, 1500, 2000...",
+        prefixIcon: const Icon(Icons.monetization_on_outlined, color: Colors.indigo),
+        helperText: "De 1.000 a 30.000 (Múltiplos de 500)",
+        helperStyle: TextStyle(color: _isValidAmount(_amountController.text) ? Colors.green : Colors.blueGrey),
+        errorText: _amountController.text.isNotEmpty && !_isValidAmount(_amountController.text) 
+            ? "Monto inválido" : null,
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    );
+  }
 
   Widget _sectionTitle(String title) {
     return Padding(
@@ -252,7 +278,6 @@ class _AddClientScreenState extends State<AddClientScreen> {
           border: Border.all(
             color: _imageFile == null ? Colors.indigo.withValues(alpha: 0.2) : Colors.green, 
             width: 2, 
-            style: _imageFile == null ? BorderStyle.solid : BorderStyle.solid
           ),
         ),
         child: _imageFile == null 
@@ -296,21 +321,18 @@ class _AddClientScreenState extends State<AddClientScreen> {
       );
     }).toList();
   }
+
   Widget _buildContractDropdown() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: DatabaseService().getTemplatesStream(),
       builder: (context, snapshot) {
-        // Si tiene datos (aunque sea de caché), los mostramos directamente
         if (snapshot.hasData && snapshot.data!.isNotEmpty) {
           final dynamicTypes = snapshot.data!.map((t) => t['title'] as String).toList();
-          
-          // Evita errores de valor nulo si la lista cambió
           if (_selectedContractType == null || !dynamicTypes.contains(_selectedContractType)) {
             _selectedContractType = dynamicTypes.first;
           }
-
           return DropdownButtonFormField<String>(
-            initialValue: _selectedContractType, // Usar 'value' en lugar de 'initialValue' para mayor control
+            initialValue: _selectedContractType,
             decoration: InputDecoration(
               labelText: "Seleccionar Contrato",
               filled: true, 
@@ -322,13 +344,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
             onChanged: (val) => setState(() => _selectedContractType = val),
           );
         }
-
-        // Mientras no haya datos (ni caché ni red)
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const LinearProgressIndicator();
         }
-
-        return const Text("No hay plantillas disponibles (Revisa tu conexión)", style: TextStyle(color: Colors.red));
+        return const Text("No hay plantillas disponibles", style: TextStyle(color: Colors.red));
       },
     );
   }

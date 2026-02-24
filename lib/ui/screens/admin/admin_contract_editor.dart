@@ -75,14 +75,12 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
     final text = _bodyController.text;
     final selection = _bodyController.selection;
     
-    // Si no hay selección previa, insertamos al final
     int start = selection.start != -1 ? selection.start : text.length;
     int end = selection.end != -1 ? selection.end : text.length;
     
     final newText = text.replaceRange(start, end, tag);
     _bodyController.text = newText;
     
-    // Reposicionamos el cursor justo después del tag insertado
     _bodyController.selection = TextSelection.collapsed(offset: start + tag.length);
   }
 
@@ -135,7 +133,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                   const Text("Toca para insertar en la posición del cursor:", 
                     style: TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 10),
-                  Wrap( // Wrap es mejor que Row para pantallas pequeñas
+                  Wrap( 
                     spacing: 8,
                     runSpacing: 0,
                     children: [
@@ -143,6 +141,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                       _tagChip("{{id}}", "Documento"),
                       _tagChip("{{direcciones}}", "Sedes"),
                       _tagChip("{{fecha}}", "Fecha"),
+                      _tagChip("{{monto}}", "Monto"), // NUEVA VARIABLE DINÁMICA
                       _tagChip("{{firma}}", "Firma"),
                     ],
                   ),

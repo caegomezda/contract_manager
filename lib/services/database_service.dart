@@ -19,6 +19,7 @@ class DatabaseService {
     String? manualWorkerId,   
     required String name,
     required String clientId,
+    int amount = 1000,
     required String contractType,
     required List<String> addresses,
     required String signatureBase64,

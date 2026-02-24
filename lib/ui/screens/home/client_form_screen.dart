@@ -33,7 +33,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   bool _acceptedTerms = false;
   bool _isLoading = false;
   String? _selectedContractType;
-
+  final _amountController = TextEditingController(text: "1000");
   // Controlador de Firma Digital
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -139,6 +139,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
         manualWorkerId: widget.existingClient?.workerId,
         name: _nameController.text.trim(),
         clientId: _idController.text.trim(),
+        amount: int.parse(_amountController.text),
         contractType: _selectedContractType ?? "Sin especificar",
         addresses: addresses,
         signatureBase64: signatureBase64,
