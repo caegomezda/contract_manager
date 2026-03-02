@@ -75,12 +75,14 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
     final text = _bodyController.text;
     final selection = _bodyController.selection;
     
+    // Si no hay selección previa, insertar al final
     int start = selection.start != -1 ? selection.start : text.length;
     int end = selection.end != -1 ? selection.end : text.length;
     
     final newText = text.replaceRange(start, end, tag);
     _bodyController.text = newText;
     
+    // Reposicionar el cursor justo después del tag insertado
     _bodyController.selection = TextSelection.collapsed(offset: start + tag.length);
   }
 
@@ -89,7 +91,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(widget.isReadOnly ? "Detalle del Contrato" : "Editor"),
+        title: Text(widget.isReadOnly ? "Detalle del Contrato" : "Editor de Plantilla"),
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.indigo,
@@ -117,6 +119,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                   decoration: InputDecoration(
                     labelText: "Nombre del Contrato",
+                    hintText: "Ej: Contrato de Prestación de Servicios",
                     filled: true,
                     fillColor: Colors.grey[50],
                     border: OutlineInputBorder(
@@ -135,13 +138,13 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                   const SizedBox(height: 10),
                   Wrap( 
                     spacing: 8,
-                    runSpacing: 0,
+                    runSpacing: 8,
                     children: [
                       _tagChip("{{nombre}}", "Nombre"),
                       _tagChip("{{id}}", "Documento"),
                       _tagChip("{{direcciones}}", "Sedes"),
                       _tagChip("{{fecha}}", "Fecha"),
-                      _tagChip("{{monto}}", "Monto"), // NUEVA VARIABLE DINÁMICA
+                      _tagChip("{{monto}}", "Monto"),
                       _tagChip("{{firma}}", "Firma"),
                     ],
                   ),
@@ -159,10 +162,12 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                   minLines: 12,
                   textAlignVertical: TextAlignVertical.top,
                   decoration: InputDecoration(
-                    hintText: "Escribe aquí...",
+                    hintText: "Escribe el contenido legal aquí...",
                     filled: true,
                     fillColor: widget.isReadOnly ? Colors.grey[50] : Colors.white,
-                    border: widget.isReadOnly ? InputBorder.none : const OutlineInputBorder(),
+                    border: widget.isReadOnly ? InputBorder.none : const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(10))
+                    ),
                   ),
                 ),
                 
@@ -175,7 +180,7 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                     child: ElevatedButton.icon(
                       onPressed: _isSaving ? null : _saveTemplate,
                       icon: const Icon(Icons.cloud_done, color: Colors.white),
-                      label: const Text("GUARDAR", 
+                      label: const Text("GUARDAR PLANTILLA", 
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.indigo,
@@ -197,8 +202,10 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                       children: [
                         Icon(Icons.info_outline, color: Colors.orange),
                         SizedBox(width: 10),
-                        Text("Modo lectura: No se permiten cambios.",
-                          style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+                        Expanded(
+                          child: Text("Modo lectura: No se permiten cambios en este documento.",
+                            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+                        ),
                       ],
                     ),
                   ),

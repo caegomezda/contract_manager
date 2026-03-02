@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, avoid_print
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -26,6 +26,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   // Controladores de Texto
   late TextEditingController _nameController;
   late TextEditingController _idController;
+  late TextEditingController _emailController; // NUEVO
+  late TextEditingController _phoneController; // NUEVO
+  late TextEditingController _amountController; // ACTUALIZADO (antes era local)
   List<TextEditingController> _addressControllers = [];
 
   // Estado del Formulario
@@ -33,7 +36,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   bool _acceptedTerms = false;
   bool _isLoading = false;
   String? _selectedContractType;
-  final _amountController = TextEditingController(text: "1000");
+
   // Controlador de Firma Digital
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -51,6 +54,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   void _initializeFields() {
     _nameController = TextEditingController(text: widget.existingClient?.name ?? '');
     _idController = TextEditingController(text: widget.existingClient?.clientId ?? '');
+    _emailController = TextEditingController(text: widget.existingClient?.email ?? ''); // Carga email
+    _phoneController = TextEditingController(text: widget.existingClient?.phone ?? ''); // Carga teléfono
+    _amountController = TextEditingController(text: widget.existingClient?.monto.toString() ?? "0"); // Carga monto
 
     final existingAddresses = widget.existingClient?.addresses ?? [];
     if (existingAddresses.isEmpty) {
@@ -71,6 +77,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   void dispose() {
     _nameController.dispose();
     _idController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _amountController.dispose();
     for (var controller in _addressControllers) {
       controller.dispose();
     }
@@ -95,13 +104,12 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
 
   // --- LÓGICA DE CAPTURA DE MEDIOS ---
 
-  /// Activa la cámara del dispositivo para capturar la fotografía del cliente.
   Future<void> _takePhoto() async {
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.camera,
       maxWidth: 600,
       maxHeight: 600,
-      imageQuality: 30, // Calidad optimizada para Firebase Storage
+      imageQuality: 30, 
     );
     if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
@@ -110,7 +118,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   Future<void> _saveData() async {
     if (!_formKey.currentState!.validate()) return;
     
-    // Validación de firma obligatoria para nuevos registros
     if (_signatureController.isEmpty && widget.existingClient == null) {
       _showSnackBar("Falta la firma del cliente", isError: true);
       return;
@@ -121,7 +128,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     try {
       String signatureBase64 = widget.existingClient?.signatureBase64 ?? "";
       
-      // Conversión de firma de trazos a imagen Base64
       if (_signatureController.isNotEmpty) {
         final signatureBytes = await _signatureController.toPngBytes();
         if (signatureBytes != null) {
@@ -134,12 +140,15 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
           .where((t) => t.isNotEmpty)
           .toList();
 
+      // Mapeo extendido para el servicio de base de datos
       await DatabaseService().saveClient(
         id: widget.existingClient?.id,
         manualWorkerId: widget.existingClient?.workerId,
         name: _nameController.text.trim(),
         clientId: _idController.text.trim(),
-        amount: int.parse(_amountController.text),
+        email: _emailController.text.trim(), // Enviando nuevo campo
+        phone: _phoneController.text.trim(), // Enviando nuevo campo
+        amount: double.tryParse(_amountController.text) ?? 0.0, // Enviando nuevo campo
         contractType: _selectedContractType ?? "Sin especificar",
         addresses: addresses,
         signatureBase64: signatureBase64,
@@ -150,18 +159,15 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       if (mounted) {
         _showSnackBar("¡Datos guardados correctamente!", isError: false);
         _handleNavigationReturn();
-        // Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) _showSnackBar("Error al guardar: $e", isError: true);
-      // ignore: avoid_print
       print("Error detallado: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Gestión inteligente de navegación post-guardado.
   void _handleNavigationReturn() {
     if (widget.existingClient != null) {
       int count = 0;
@@ -179,18 +185,17 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       ),
     );
   }
-@override
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingClient == null ? "Nuevo Cliente" : "Actualizar Cliente"),
       ),
-      // Usamos Stack para encimar el cargador sobre el formulario
       body: Stack(
         children: [
-          // 1. El Formulario
           IgnorePointer(
-            ignoring: _isLoading, // Bloquea todos los inputs si está cargando
+            ignoring: _isLoading,
             child: Form(
               key: _formKey,
               child: ListView(
@@ -201,6 +206,12 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                   _buildTextField(_nameController, "Nombre Completo"),
                   const SizedBox(height: 15),
                   _buildTextField(_idController, "Cédula o NIT"),
+                  const SizedBox(height: 15),
+                  _buildTextField(_emailController, "Correo Electrónico", keyboardType: TextInputType.emailAddress),
+                  const SizedBox(height: 15),
+                  _buildTextField(_phoneController, "Número de Celular", keyboardType: TextInputType.phone),
+                  const SizedBox(height: 15),
+                  _buildTextField(_amountController, "Monto del Contrato", keyboardType: TextInputType.number),
                   const SizedBox(height: 20),
                   _buildAddressSection(),
                   const SizedBox(height: 20),
@@ -220,10 +231,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
             ),
           ),
 
-          // 2. El Overlay de Bloqueo (Solo se ve cuando _isLoading es true)
           if (_isLoading)
             Container(
-              color: Colors.black.withValues(alpha: 0.4), // Oscurece el fondo
+              color: Colors.black.withValues(alpha: 0.4),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.all(25),
@@ -254,11 +264,13 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       ),
     );
   }
+
   // --- COMPONENTES DE INTERFAZ ---
 
-  Widget _buildTextField(TextEditingController controller, String label) {
+  Widget _buildTextField(TextEditingController controller, String label, {TextInputType keyboardType = TextInputType.text}) {
     return TextFormField(
       controller: controller,
+      keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label, 
         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)))
@@ -283,13 +295,18 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
         ),
         child: _imageFile != null 
           ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_imageFile!, fit: BoxFit.cover))
-          : const Center(child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.camera_alt, size: 40, color: Colors.grey),
-                Text("Capturar Foto", style: TextStyle(color: Colors.grey)),
-              ],
-            )),
+          : (widget.existingClient?.photoUrl != null) 
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(12), 
+                child: Image.memory(base64Decode(widget.existingClient!.photoUrl!), fit: BoxFit.cover)
+              )
+            : const Center(child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.camera_alt, size: 40, color: Colors.grey),
+                  Text("Capturar Foto", style: TextStyle(color: Colors.grey)),
+                ],
+              )),
       ),
     );
   }

@@ -25,16 +25,20 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   bool _isGenerating = false;
 
   /// Obtiene la plantilla de Firebase y reemplaza los marcadores {{...}} con datos reales.
+  /// Se han agregado las nuevas variables dinámicas: correo, teléfono y monto.
   Future<String> _getProcessedTerms() async {
     String contractTitle = widget.client['contract_type'] ?? 'Servicio Técnico';
     final templateData = await DatabaseService().getTemplateByTitle(contractTitle);
     
     String termsBody = templateData?['body'] ?? "Contrato de prestación de servicios para {{nombre}}.";
 
-    // Lógica de reemplazo de variables (Hotkeys)
+    // Lógica de reemplazo de variables (Hotkeys) optimizada
     return termsBody
         .replaceAll('{{nombre}}', widget.client['name'] ?? '')
         .replaceAll('{{id}}', widget.client['client_id'] ?? '')
+        .replaceAll('{{correo}}', widget.client['email'] ?? 'N/A')
+        .replaceAll('{{telefono}}', widget.client['phone'] ?? 'N/A')
+        .replaceAll('{{monto}}', widget.client['monto']?.toString() ?? '0')
         .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
         .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
   }
@@ -76,7 +80,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Detalle"),
+        title: const Text("Detalle del Cliente"),
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
@@ -95,7 +99,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 _buildSectionTitle("INFORMACIÓN DEL CLIENTE"),
                 const Divider(),
                 _infoRow(Icons.business, "Nombre / Razón Social", widget.client['name'] ?? 'N/A'),
-                _infoRow(Icons.badge, "Identificación", widget.client['client_id'] ?? 'N/A'),
+                _infoRow(Icons.badge, "Identificación (ID/NIT)", widget.client['client_id'] ?? 'N/A'),
+                _infoRow(Icons.email, "Correo Electrónico", widget.client['email'] ?? 'No registrado'),
+                _infoRow(Icons.phone_android, "Teléfono / Celular", widget.client['phone'] ?? 'No registrado'),
+                _infoRow(Icons.payments_outlined, "Monto Acordado", "\$${widget.client['monto'] ?? '0'}"),
                 _infoRow(Icons.description, "Tipo de Contrato", widget.client['contract_type'] ?? 'Servicio Estándar'),
                 
                 if (widget.client['addresses'] != null) ...[
@@ -132,7 +139,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         children: [
           CircularProgressIndicator(color: Colors.blueAccent),
           SizedBox(height: 15),
-          Text("Procesando ...", style: TextStyle(fontWeight: FontWeight.w500)),
+          Text("Procesando Contrato...", style: TextStyle(fontWeight: FontWeight.w500)),
+          Text("Esto puede tardar unos segundos", style: TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),
     );
@@ -169,10 +177,14 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: () {
+          // Se mapean los nuevos campos al modelo para la edición
           final clientModel = ClientModel(
             id: widget.client['id'],
             name: widget.client['name'] ?? '',
             clientId: widget.client['client_id'] ?? '',
+            email: widget.client['email'] ?? '', // Nuevo
+            phone: widget.client['phone'] ?? '', // Nuevo
+            monto: widget.client['monto'] ?? 0,   // Nuevo
             contractType: widget.client['contract_type'] ?? '',
             workerId: widget.client['worker_id'],
             addresses: List<String>.from(widget.client['addresses'] ?? []),

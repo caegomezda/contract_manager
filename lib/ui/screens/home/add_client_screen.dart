@@ -1,6 +1,6 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // IMPORTACIÓN AGREGADA PARA LOS FORMATTERS
+import 'package:flutter/services.dart';
 import 'package:signature/signature.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -20,6 +20,8 @@ class AddClientScreen extends StatefulWidget {
 class _AddClientScreenState extends State<AddClientScreen> {
   final _nameController = TextEditingController();
   final _idController = TextEditingController();
+  final _emailController = TextEditingController(); // NUEVO
+  final _phoneController = TextEditingController(); // NUEVO
   final _amountController = TextEditingController();
   final List<TextEditingController> _addressControllers = [TextEditingController()];
   
@@ -45,6 +47,8 @@ class _AddClientScreenState extends State<AddClientScreen> {
     _signatureController.dispose();
     _nameController.dispose();
     _idController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
     _amountController.dispose();
     for (var controller in _addressControllers) {
       controller.dispose(); 
@@ -52,11 +56,13 @@ class _AddClientScreenState extends State<AddClientScreen> {
     super.dispose();
   }
 
+  /// Validación de monto actualizada para mayor flexibilidad o reglas específicas
   bool _isValidAmount(String value) {
     if (value.isEmpty) return false;
-    final int? val = int.tryParse(value);
+    final double? val = double.tryParse(value);
     if (val == null) return false;
-    return val >= 1000 && val <= 30000 && val % 500 == 0;
+    // Ajustado a las reglas de Axioma Flow: Múltiplos de 500
+    return val >= 1000 && val <= 1000000 && val % 500 == 0;
   }
 
   Future<void> _takePhoto() async {
@@ -83,8 +89,11 @@ class _AddClientScreenState extends State<AddClientScreen> {
   void _saveContract() async {
     final name = _nameController.text.trim();
     final clientId = _idController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
     final amountText = _amountController.text.trim();
 
+    // Validaciones
     if (_imageFile == null) return _showMsg("Es obligatoria la foto de evidencia");
     if (!_acceptedTerms) return _showMsg("Debe aceptar los términos legales");
     if (_signatureController.isEmpty) return _showMsg("El cliente debe firmar el documento");
@@ -92,7 +101,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
     if (_selectedContractType == null) return _showMsg("Seleccione un tipo de contrato");
     
     if (!_isValidAmount(amountText)) {
-      return _showMsg("El monto debe ser entre 1.000 y 30.000, en múltiplos de 500");
+      return _showMsg("Monto inválido (Múltiplos de 500 entre 1.000 y 1'000.000)");
     }
 
     setState(() => _isLoading = true);
@@ -110,12 +119,15 @@ class _AddClientScreenState extends State<AddClientScreen> {
         return _showMsg("Debe ingresar al menos una dirección");
       }
 
+      // Llamada al DatabaseService actualizado
       await DatabaseService().saveClient(
         manualWorkerId: widget.adminAssignId,    
         manualWorkerName: widget.adminAssignName,
         name: name,
         clientId: clientId,
-        amount: int.parse(amountText), 
+        email: email,
+        phone: phone,
+        amount: double.parse(amountText), 
         contractType: _selectedContractType!, 
         addresses: addresses,
         signatureBase64: signatureBytes != null ? base64Encode(signatureBytes) : '',
@@ -167,6 +179,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
                   const SizedBox(height: 15),
                   _buildInput("Identificación (NIT/CC)", _idController, Icons.badge),
                   const SizedBox(height: 15),
+                  _buildInput("Correo Electrónico", _emailController, Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+                  const SizedBox(height: 15),
+                  _buildInput("Teléfono / WhatsApp", _phoneController, Icons.phone_android, keyboardType: TextInputType.phone),
+                  const SizedBox(height: 15),
                   _buildAmountInput(),
                   const SizedBox(height: 25),
                   _buildAddressHeader(),
@@ -193,31 +209,34 @@ class _AddClientScreenState extends State<AddClientScreen> {
               ),
             ),
           ),
-          if (_isLoading)
-            Container(
-              color: Colors.black.withValues(alpha: 0.4),
-              child: Center(
-                child: Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(color: Colors.indigo),
-                        const SizedBox(height: 20),
-                        const Text("Guardando Registro...", 
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 8),
-                        Text("Se sincronizará al detectar internet", 
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          if (_isLoading) _buildLoadingOverlay(),
         ],
+      ),
+    );
+  }
+
+  // --- COMPONENTES DE INTERFAZ ---
+
+  Widget _buildLoadingOverlay() {
+    return Container(
+      color: Colors.black.withOpacity(0.4),
+      child: Center(
+        child: Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          child: const Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.indigo),
+                SizedBox(height: 20),
+                Text("Guardando Registro...", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                SizedBox(height: 8),
+                Text("Se sincronizará al detectar internet", style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -230,9 +249,9 @@ class _AddClientScreenState extends State<AddClientScreen> {
       onChanged: (val) => setState(() {}),
       decoration: InputDecoration(
         labelText: "Monto del Contrato",
-        hintText: "Eje: 1000, 1500, 2000...",
+        hintText: "Ej: 1000, 5000, 10000...",
         prefixIcon: const Icon(Icons.monetization_on_outlined, color: Colors.indigo),
-        helperText: "De 1.000 a 30.000 (Múltiplos de 500)",
+        helperText: "Múltiplos de 500",
         helperStyle: TextStyle(color: _isValidAmount(_amountController.text) ? Colors.green : Colors.blueGrey),
         errorText: _amountController.text.isNotEmpty && !_isValidAmount(_amountController.text) 
             ? "Monto inválido" : null,
@@ -251,10 +270,11 @@ class _AddClientScreenState extends State<AddClientScreen> {
     );
   }
 
-  Widget _buildInput(String label, TextEditingController controller, IconData icon) {
+  Widget _buildInput(String label, TextEditingController controller, IconData icon, {TextInputType keyboardType = TextInputType.text}) {
     return TextField(
       controller: controller,
-      textCapitalization: TextCapitalization.words,
+      keyboardType: keyboardType,
+      textCapitalization: keyboardType == TextInputType.emailAddress ? TextCapitalization.none : TextCapitalization.words,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: Colors.indigo),
@@ -276,7 +296,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
           color: Colors.grey[100],
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
-            color: _imageFile == null ? Colors.indigo.withValues(alpha: 0.2) : Colors.green, 
+            color: _imageFile == null ? Colors.indigo.withOpacity(0.2) : Colors.green, 
             width: 2, 
           ),
         ),
@@ -332,7 +352,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
             _selectedContractType = dynamicTypes.first;
           }
           return DropdownButtonFormField<String>(
-            initialValue: _selectedContractType,
+            value: _selectedContractType,
             decoration: InputDecoration(
               labelText: "Seleccionar Contrato",
               filled: true, 
@@ -344,10 +364,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
             onChanged: (val) => setState(() => _selectedContractType = val),
           );
         }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const LinearProgressIndicator();
-        }
-        return const Text("No hay plantillas disponibles", style: TextStyle(color: Colors.red));
+        return const LinearProgressIndicator();
       },
     );
   }
@@ -356,7 +373,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.indigo.withValues(alpha: 0.05),
+        color: Colors.indigo.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12)
       ),
       child: CheckboxListTile(
