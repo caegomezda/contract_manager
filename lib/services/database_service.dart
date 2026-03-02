@@ -13,13 +13,16 @@ class DatabaseService {
 
   // --- GESTIÓN DE CLIENTES (FIRMAS Y CONTRATOS) ---
 
+  /// Guarda o actualiza un cliente con soporte para nuevos campos: correo, teléfono y monto.
   Future<void> saveClient({
     String? id,
     String? manualWorkerName, 
     String? manualWorkerId,   
     required String name,
     required String clientId,
-    int amount = 1000,
+    String email = '',      // NUEVO
+    String phone = '',      // NUEVO
+    double amount = 0.0,    // ACTUALIZADO a double
     required String contractType,
     required List<String> addresses,
     required String signatureBase64,
@@ -36,6 +39,9 @@ class DatabaseService {
     final Map<String, dynamic> clientData = {
       'name': name,
       'client_id': clientId,
+      'email': email,           // NUEVO
+      'phone': phone,           // NUEVO
+      'monto': amount,          // NUEVO/ACTUALIZADO
       'contract_type': contractType,
       'addresses': addresses,
       'signature_path': signatureBase64, 
@@ -48,25 +54,27 @@ class DatabaseService {
     }
 
     try {
+      // Usamos el clientId como ID de documento si no viene un ID de edición
       final String docId = (id != null && id.isNotEmpty) ? id : clientId;
       DocumentReference clientRef = _db.collection('clients').doc(docId);
 
       if (id == null || id.isEmpty) {
+        // Lógica para NUEVO CLIENTE
         clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
         clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
         clientData['created_at'] = FieldValue.serverTimestamp();
 
-        clientRef.set(clientData).catchError((e) => print("Error en background: $e"));
+        await clientRef.set(clientData);
         _updateTemplateCounter(contractType);
-
       } else {
-        clientRef.update(clientData).catchError((e) => print("Error en background: $e"));
+        // Lógica para ACTUALIZAR CLIENTE existente
+        await clientRef.update(clientData);
       }
       
       return; 
 
     } catch (e) {
-      debugPrint("Error inmediato: $e");
+      debugPrint("Error al guardar cliente: $e");
       rethrow;
     }
   }
@@ -150,7 +158,6 @@ class DatabaseService {
     }
   }
 
-  // --- NUEVA CONFIGURACIÓN: RECUPERACIÓN DE INVITACIONES ---
   Stream<List<Map<String, dynamic>>> getPendingInvitationsStream() {
     return _db.collection('invitations')
         .snapshots()
@@ -292,17 +299,12 @@ class DatabaseService {
 
   Future<void> renewUserAccess(String targetUid, int days) async {
     try {
-      // Generamos el nuevo código de 4 dígitos
       final String newCode = (Random().nextInt(8999) + 1000).toString();
-      
-      // Calculamos la fecha de expiración
       final DateTime expiryDate = DateTime.now().add(Duration(days: days));
 
       await _db.collection('users').doc(targetUid).update({
         'auth_code': newCode,
-        // Usamos Timestamp de Firestore en lugar de String para poder hacer filtros/queries
         'auth_valid_until': Timestamp.fromDate(expiryDate), 
-        // Al poner esto en false, obligamos a la App a pedir el código de nuevo
         'is_validated': false, 
         'updated_at': FieldValue.serverTimestamp(),
       });
@@ -310,7 +312,7 @@ class DatabaseService {
       print("Acceso renovado: Código $newCode válido hasta $expiryDate");
     } catch (e) {
       print("Error en renewUserAccess: $e");
-      rethrow; // Es mejor relanzar el error para manejarlo en la UI
+      rethrow; 
     }
   }
 
