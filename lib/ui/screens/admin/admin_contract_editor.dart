@@ -75,14 +75,12 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
     final text = _bodyController.text;
     final selection = _bodyController.selection;
     
-    // Si no hay selección previa, insertar al final
     int start = selection.start != -1 ? selection.start : text.length;
     int end = selection.end != -1 ? selection.end : text.length;
     
     final newText = text.replaceRange(start, end, tag);
     _bodyController.text = newText;
     
-    // Reposicionar el cursor justo después del tag insertado
     _bodyController.selection = TextSelection.collapsed(offset: start + tag.length);
   }
 
@@ -142,6 +140,8 @@ class _AdminContractEditorState extends State<AdminContractEditor> {
                     children: [
                       _tagChip("{{nombre}}", "Nombre"),
                       _tagChip("{{id}}", "Documento"),
+                      _tagChip("{{correo}}", "Email"),      // NUEVO
+                      _tagChip("{{telefono}}", "Teléfono"), // NUEVO
                       _tagChip("{{direcciones}}", "Sedes"),
                       _tagChip("{{fecha}}", "Fecha"),
                       _tagChip("{{monto}}", "Monto"),

@@ -2,16 +2,13 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // IMPORTANTE para FilteringTextInputFormatter
 import 'package:image_picker/image_picker.dart';
 import 'package:signature/signature.dart';
 import '../../../data/models/client_model.dart';
 import '../../../services/database_service.dart';
 import '../admin/terms_editor_screen.dart';
 
-/// Formulario interactivo para la creación y edición de clientes.
-/// 
-/// Gestiona la captura de datos personales, múltiples direcciones, toma de fotografía,
-/// selección de tipo de contrato dinámico y recolección de firma digital.
 class ClientFormScreen extends StatefulWidget {
   final ClientModel? existingClient;
   const ClientFormScreen({super.key, this.existingClient});
@@ -26,9 +23,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   // Controladores de Texto
   late TextEditingController _nameController;
   late TextEditingController _idController;
-  late TextEditingController _emailController; // NUEVO
-  late TextEditingController _phoneController; // NUEVO
-  late TextEditingController _amountController; // ACTUALIZADO (antes era local)
+  late TextEditingController _emailController;
+  late TextEditingController _phoneController;
+  late TextEditingController _amountController;
   List<TextEditingController> _addressControllers = [];
 
   // Estado del Formulario
@@ -50,13 +47,17 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     _initializeFields();
   }
 
-  /// Inicializa los campos del formulario con datos existentes si se trata de una edición.
   void _initializeFields() {
     _nameController = TextEditingController(text: widget.existingClient?.name ?? '');
     _idController = TextEditingController(text: widget.existingClient?.clientId ?? '');
-    _emailController = TextEditingController(text: widget.existingClient?.email ?? ''); // Carga email
-    _phoneController = TextEditingController(text: widget.existingClient?.phone ?? ''); // Carga teléfono
-    _amountController = TextEditingController(text: widget.existingClient?.monto.toString() ?? "0"); // Carga monto
+    _emailController = TextEditingController(text: widget.existingClient?.email ?? '');
+    _phoneController = TextEditingController(text: widget.existingClient?.phone ?? '');
+    
+    // Inicializar monto: si es 0 o null, poner vacío para que el hint sea visible
+    String initialAmount = widget.existingClient?.monto != null && widget.existingClient!.monto > 0 
+        ? widget.existingClient!.monto.toInt().toString() 
+        : "";
+    _amountController = TextEditingController(text: initialAmount);
 
     final existingAddresses = widget.existingClient?.addresses ?? [];
     if (existingAddresses.isEmpty) {
@@ -87,7 +88,15 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE GESTIÓN DE DIRECCIONES ---
+  // --- VALIDACIONES ---
+  
+  bool _isValidAmount(String text) {
+    if (text.isEmpty) return false;
+    final numValue = int.tryParse(text);
+    return numValue != null && numValue > 0 && numValue % 500 == 0;
+  }
+
+  // --- LÓGICA DE DIRECCIONES ---
 
   void _addAddressField() {
     setState(() => _addressControllers.add(TextEditingController()));
@@ -102,7 +111,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     }
   }
 
-  // --- LÓGICA DE CAPTURA DE MEDIOS ---
+  // --- LÓGICA DE CAPTURA ---
 
   Future<void> _takePhoto() async {
     final pickedFile = await ImagePicker().pickImage(
@@ -114,8 +123,13 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
 
-  /// Procesa y guarda la información del cliente en Firestore.
   Future<void> _saveData() async {
+    // Validación de monto antes de proceder
+    if (!_isValidAmount(_amountController.text)) {
+      _showSnackBar("El monto debe ser múltiplo de 500", isError: true);
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
     
     if (_signatureController.isEmpty && widget.existingClient == null) {
@@ -140,15 +154,14 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
           .where((t) => t.isNotEmpty)
           .toList();
 
-      // Mapeo extendido para el servicio de base de datos
       await DatabaseService().saveClient(
         id: widget.existingClient?.id,
         manualWorkerId: widget.existingClient?.workerId,
         name: _nameController.text.trim(),
         clientId: _idController.text.trim(),
-        email: _emailController.text.trim(), // Enviando nuevo campo
-        phone: _phoneController.text.trim(), // Enviando nuevo campo
-        amount: double.tryParse(_amountController.text) ?? 0.0, // Enviando nuevo campo
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        amount: double.tryParse(_amountController.text) ?? 0.0,
         contractType: _selectedContractType ?? "Sin especificar",
         addresses: addresses,
         signatureBase64: signatureBase64,
@@ -162,7 +175,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       }
     } catch (e) {
       if (mounted) _showSnackBar("Error al guardar: $e", isError: true);
-      print("Error detallado: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -203,15 +215,15 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                 children: [
                   _buildPhotoSelector(),
                   const SizedBox(height: 20),
-                  _buildTextField(_nameController, "Nombre Completo"),
+                  _buildTextField(_nameController, "Nombre Completo", Icons.person_outline),
                   const SizedBox(height: 15),
-                  _buildTextField(_idController, "Cédula o NIT"),
+                  _buildTextField(_idController, "Cédula o NIT", Icons.badge_outlined),
                   const SizedBox(height: 15),
-                  _buildTextField(_emailController, "Correo Electrónico", keyboardType: TextInputType.emailAddress),
+                  _buildTextField(_emailController, "Correo Electrónico", Icons.email_outlined, keyboardType: TextInputType.emailAddress),
                   const SizedBox(height: 15),
-                  _buildTextField(_phoneController, "Número de Celular", keyboardType: TextInputType.phone),
+                  _buildTextField(_phoneController, "Número de Celular", Icons.phone_android_outlined, keyboardType: TextInputType.phone),
                   const SizedBox(height: 15),
-                  _buildTextField(_amountController, "Monto del Contrato", keyboardType: TextInputType.number),
+                  _buildAmountInput(), // USANDO EL NUEVO COMPONENTE CON RESTRICCIÓN
                   const SizedBox(height: 20),
                   _buildAddressSection(),
                   const SizedBox(height: 20),
@@ -230,36 +242,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
               ),
             ),
           ),
-
-          if (_isLoading)
-            Container(
-              color: Colors.black.withValues(alpha: 0.4),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(25),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(color: Colors.indigo),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "Guardando datos...",
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        "Sincronización offline activa",
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          if (_isLoading) _buildLoadingOverlay(),
         ],
       ),
     );
@@ -267,15 +250,45 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
 
   // --- COMPONENTES DE INTERFAZ ---
 
-  Widget _buildTextField(TextEditingController controller, String label, {TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {TextInputType keyboardType = TextInputType.text}) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label, 
-        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)))
+        prefixIcon: Icon(icon, color: Colors.indigo),
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)
       ),
       validator: (val) => (val == null || val.isEmpty) ? "Este campo es obligatorio" : null,
+    );
+  }
+
+  Widget _buildAmountInput() {
+    bool isValid = _isValidAmount(_amountController.text);
+    return TextFormField(
+      controller: _amountController,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      onChanged: (val) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: "Monto del Contrato",
+        hintText: "Ej: 1000, 5000, 10000...",
+        prefixIcon: const Icon(Icons.monetization_on_outlined, color: Colors.indigo),
+        helperText: "Múltiplos de 500",
+        helperStyle: TextStyle(color: isValid ? Colors.green : Colors.blueGrey),
+        errorText: _amountController.text.isNotEmpty && !isValid 
+            ? "El monto debe ser múltiplo de 500" : null,
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+      validator: (val) {
+        if (val == null || val.isEmpty) return "Ingrese un monto";
+        if (!isValid) return "Monto no permitido";
+        return null;
+      },
     );
   }
 
@@ -318,8 +331,8 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween, 
           children: [
-            const Text("DIRECCIONES DE SERVICIO", style: TextStyle(fontWeight: FontWeight.bold)), 
-            IconButton(onPressed: _addAddressField, icon: const Icon(Icons.add_circle, color: Colors.blueAccent))
+            const Text("DIRECCIONES DE SERVICIO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo)), 
+            IconButton(onPressed: _addAddressField, icon: const Icon(Icons.add_circle, color: Colors.indigo))
           ]
         ),
         ..._addressControllers.asMap().entries.map((e) => Padding(
@@ -328,9 +341,15 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
             children: [
               Expanded(child: TextFormField(
                 controller: e.value, 
-                decoration: const InputDecoration(hintText: "Escriba la dirección", border: OutlineInputBorder())
+                decoration: InputDecoration(
+                  hintText: "Escriba la dirección", 
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)
+                )
               )),
-              IconButton(onPressed: () => _removeAddressField(e.key), icon: const Icon(Icons.delete, color: Colors.red))
+              const SizedBox(width: 5),
+              IconButton(onPressed: () => _removeAddressField(e.key), icon: const Icon(Icons.delete_outline, color: Colors.redAccent))
             ]
           ),
         ))
@@ -356,7 +375,10 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
           initialValue: _selectedContractType,
           decoration: InputDecoration(
             labelText: "Tipo de Contrato",
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            prefixIcon: const Icon(Icons.description_outlined, color: Colors.indigo),
+            filled: true,
+            fillColor: Colors.grey[100],
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           ),
           items: dynamicContractTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
           onChanged: (val) => setState(() => _selectedContractType = val),
@@ -368,17 +390,18 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   Widget _buildTermsTile() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.1), 
+        color: Colors.indigo.withValues(alpha: 0.05), 
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.3))
+        border: Border.all(color: Colors.indigo.withValues(alpha: 0.1))
       ),
       child: CheckboxListTile(
         value: _acceptedTerms,
+        activeColor: Colors.indigo,
         onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
         title: const Text("Acepto términos y condiciones", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
         subtitle: InkWell(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen())),
-          child: const Text("Leer contrato legal completo", style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 12)),
+          child: const Text("Leer contrato legal completo", style: TextStyle(color: Colors.indigo, decoration: TextDecoration.underline, fontSize: 12)),
         ),
         controlAffinity: ListTileControlAffinity.leading,
       ),
@@ -403,21 +426,48 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     alignment: Alignment.centerRight, 
     child: TextButton.icon(
       onPressed: () => _signatureController.clear(), 
-      icon: const Icon(Icons.refresh, size: 16),
-      label: const Text("Limpiar Firma")
+      icon: const Icon(Icons.refresh, size: 16, color: Colors.indigo),
+      label: const Text("Limpiar Firma", style: TextStyle(color: Colors.indigo))
     )
   );
 
   Widget _buildSaveButton() => SizedBox(
     width: double.infinity, 
-    height: 50,
+    height: 55,
     child: ElevatedButton(
-      onPressed: (_acceptedTerms) ? _saveData : null, 
+      onPressed: (_acceptedTerms && !_isLoading) ? _saveData : null, 
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.green,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+        backgroundColor: Colors.indigo,
+        disabledBackgroundColor: Colors.grey,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 0,
       ),
-      child: const Text("GUARDAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+      child: const Text("GUARDAR CLIENTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))
     )
   );
+
+  Widget _buildLoadingOverlay() {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.4),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(25),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.indigo),
+              const SizedBox(height: 20),
+              const Text("Guardando datos...", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 5),
+              Text("Sincronización offline activa", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
