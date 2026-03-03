@@ -32,13 +32,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     
     String termsBody = templateData?['body'] ?? "Contrato de prestación de servicios para {{nombre}}.";
 
-    // Lógica de reemplazo de variables (Hotkeys) optimizada
+    // CORRECCIÓN: Se asegura que cada valor sea String antes de hacer el replaceAll
     return termsBody
-        .replaceAll('{{nombre}}', widget.client['name'] ?? '')
-        .replaceAll('{{id}}', widget.client['client_id'] ?? '')
-        .replaceAll('{{correo}}', widget.client['email'] ?? 'N/A')
-        .replaceAll('{{telefono}}', widget.client['phone'] ?? 'N/A')
-        .replaceAll('{{monto}}', widget.client['monto']?.toString() ?? '0')
+        .replaceAll('{{nombre}}', (widget.client['name'] ?? '').toString())
+        .replaceAll('{{id}}', (widget.client['client_id'] ?? '').toString())
+        .replaceAll('{{correo}}', (widget.client['email'] ?? 'N/A').toString())
+        .replaceAll('{{telefono}}', (widget.client['phone'] ?? 'N/A').toString())
+        .replaceAll('{{monto}}', (widget.client['monto'] ?? '0').toString())
         .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
         .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
   }
@@ -184,7 +184,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             clientId: widget.client['client_id'] ?? '',
             email: widget.client['email'] ?? '', // Nuevo
             phone: widget.client['phone'] ?? '', // Nuevo
-            monto: widget.client['monto'] ?? 0,   // Nuevo
+            monto: (widget.client['monto'] is num) ? (widget.client['monto'] as num).toDouble() : 0.0,
             contractType: widget.client['contract_type'] ?? '',
             workerId: widget.client['worker_id'],
             addresses: List<String>.from(widget.client['addresses'] ?? []),

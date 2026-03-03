@@ -26,18 +26,18 @@ class PdfService {
       fontBold = font;
     }
 
-    // 1. LIMPIEZA PROFUNDA DE CARACTERES (Adiós a las "X")
-    // Eliminamos \r (retorno de carro) y caracteres de control invisibles que causan los cuadros
+    // 1. LIMPIEZA PROFUNDA DE CARACTERES
     String cleanBody = termsBody
-        .replaceAll('\r', '') // Elimina el causante principal en Windows
-        .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'), ''); // Limpia otros caracteres de control
+        .replaceAll('\r', '') 
+        .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'), ''); 
 
+    // CORRECCIÓN AQUÍ: Forzamos .toString() en cada reemplazo para evitar el error de subtype 'double'
     String processedBody = cleanBody
-        .replaceAll('{{nombre}}', clientData['name'] ?? 'N/A')
-        .replaceAll('{{id}}', clientData['client_id'] ?? 'N/A')
-        .replaceAll('{{contrato}}', clientData['contract_type'] ?? 'N/A')
-        .replaceAll('{{direcciones}}', clientData['address'] ?? 'N/A')
-        .replaceAll('{{monto}}', clientData['monto'] ?? '0.00') 
+        .replaceAll('{{nombre}}', (clientData['name'] ?? 'N/A').toString())
+        .replaceAll('{{id}}', (clientData['client_id'] ?? 'N/A').toString())
+        .replaceAll('{{contrato}}', (clientData['contract_type'] ?? 'N/A').toString())
+        .replaceAll('{{direcciones}}', (clientData['address'] ?? 'N/A').toString())
+        .replaceAll('{{monto}}', (clientData['monto'] ?? '0.00').toString()) 
         .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0]);
 
     // 2. DECODIFICAR FIRMA
@@ -89,26 +89,26 @@ class PdfService {
                   pw.SizedBox(height: 8),
                   pw.Row(
                     children: [
-                      pw.Expanded(child: _buildInfoField("Nombre", clientData['name'] ?? 'N/A')),
-                      pw.Expanded(child: _buildInfoField("Identificación", clientData['client_id'] ?? 'N/A')),
+                      pw.Expanded(child: _buildInfoField("Nombre", (clientData['name'] ?? 'N/A').toString())),
+                      pw.Expanded(child: _buildInfoField("Identificación", (clientData['client_id'] ?? 'N/A').toString())),
                     ]
                   ),
                   pw.SizedBox(height: 5),
                   pw.Row(
                     children: [
-                      pw.Expanded(child: _buildInfoField("Servicio", clientData['contract_type'] ?? 'N/A')),
-                      pw.Expanded(child: _buildInfoField("Monto", clientData['monto'] ?? 'N/A')),
+                      pw.Expanded(child: _buildInfoField("Servicio", (clientData['contract_type'] ?? 'N/A').toString())),
+                      pw.Expanded(child: _buildInfoField("Monto", (clientData['monto'] ?? 'N/A').toString())),
                     ]
                   ),
                   pw.SizedBox(height: 5),
-                  _buildInfoField("Sedes/Dirección", clientData['address'] ?? 'No especificada'),
+                  _buildInfoField("Sedes/Dirección", (clientData['address'] ?? 'No especificada').toString()),
                 ],
               ),
             ),
 
             pw.SizedBox(height: 25),
             
-            // Cuerpo del Contrato (Usamos Paragraph para evitar desbordamientos)
+            // Cuerpo del Contrato
             pw.Text("TÉRMINOS, CLÁUSULAS Y CONDICIONES", 
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
             pw.SizedBox(height: 10),

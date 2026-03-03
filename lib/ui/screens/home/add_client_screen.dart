@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../../../services/database_service.dart';
+import '../../../services/pdf_service.dart'; // NUEVO: Importación para el PDF
 import '../admin/terms_editor_screen.dart';
 
 class AddClientScreen extends StatefulWidget {
@@ -28,6 +29,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
   File? _imageFile;
   bool _acceptedTerms = false;
   bool _isLoading = false;
+  bool _isGenerating = false; // NUEVO: Estado para el botón PDF
 
   late final SignatureController _signatureController;
   String? _selectedContractType;
@@ -54,6 +56,51 @@ class _AddClientScreenState extends State<AddClientScreen> {
       controller.dispose(); 
     }
     super.dispose();
+  }
+
+  // --- NUEVA CONFIGURACIÓN: LÓGICA DE PREVISUALIZACIÓN ---
+
+  Future<void> _processAndPreviewPDF() async {
+    if (_selectedContractType == null) {
+      _showMsg("Seleccione un tipo de contrato primero");
+      return;
+    }
+
+    setState(() => _isGenerating = true);
+    try {
+      // Obtener la plantilla seleccionada desde la base de datos
+      final templateData = await DatabaseService().getTemplateByTitle(_selectedContractType!);
+      
+      // Tomamos el cuerpo de la plantilla (usando 'body' o 'content' según tu DB)
+      String termsBody = templateData?['body'] ?? templateData?['content'] ?? "Contrato de prestación de servicios.";
+
+      // Reemplazo dinámico con los datos actuales de los controladores
+      // Si están vacíos, ponemos guiones para la previsualización
+      String processedTerms = termsBody
+          .replaceAll('{{nombre}}', _nameController.text.isNotEmpty ? _nameController.text.toUpperCase() : '________________')
+          .replaceAll('{{id}}', _idController.text.isNotEmpty ? _idController.text : '________________')
+          .replaceAll('{{correo}}', _emailController.text.isNotEmpty ? _emailController.text : '________________')
+          .replaceAll('{{telefono}}', _phoneController.text.isNotEmpty ? _phoneController.text : '________________')
+          .replaceAll('{{monto}}', _amountController.text.isNotEmpty ? "\$${_amountController.text}" : '\$ 0')
+          .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0])
+          .replaceAll('{{direcciones}}', _addressControllers.map((c) => c.text).where((t) => t.isNotEmpty).join(", ").isNotEmpty 
+              ? _addressControllers.map((c) => c.text).where((t) => t.isNotEmpty).join(", ") 
+              : '________________');
+
+      // Creamos un mapa temporal del cliente para el servicio de PDF
+      final tempClientMap = {
+        'name': _nameController.text,
+        'client_id': _idController.text,
+        'email': _emailController.text,
+        'phone': _phoneController.text,
+      };
+
+      await PdfService.previewContract(context, tempClientMap, processedTerms);
+    } catch (e) {
+      _showMsg("Error al procesar PDF: $e");
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
   }
 
   /// Validación de monto actualizada para mayor flexibilidad o reglas específicas
@@ -165,7 +212,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
       body: Stack(
         children: [
           IgnorePointer(
-            ignoring: _isLoading,
+            ignoring: _isLoading || _isGenerating,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -188,7 +235,28 @@ class _AddClientScreenState extends State<AddClientScreen> {
                   _buildAddressHeader(),
                   ..._buildAddressList(),
                   const SizedBox(height: 20),
-                  _buildContractDropdown(),
+                  
+                  // NUEVA CONFIGURACIÓN: DROPDOWN CON BOTÓN PDF AL LADO
+                  Row(
+                    children: [
+                      Expanded(child: _buildContractDropdown()),
+                      const SizedBox(width: 12),
+                      _isGenerating 
+                        ? const SizedBox(width: 48, child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.indigo)))
+                        : Container(
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: IconButton(
+                              onPressed: _processAndPreviewPDF,
+                              icon: const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 28),
+                              tooltip: "Previsualizar Contrato",
+                            ),
+                          ),
+                    ],
+                  ),
+
                   const SizedBox(height: 30),
                   _buildTermsSection(),
                   const SizedBox(height: 30),
