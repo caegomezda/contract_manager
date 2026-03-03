@@ -420,82 +420,134 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _showAddUserBottomSheet(BuildContext context) {
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController emailController = TextEditingController();
     
-    String selectedRole = 'worker';
-    if (currentUserRole == 'admin') selectedRole = 'supervisor';
+    // Determinamos el valor inicial basándonos estrictamente en el rol del usuario actual
+    String selectedRole = (currentUserRole == 'supervisor') ? 'worker' : 'supervisor';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white, 
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30))
-        ),
-        padding: EdgeInsets.only(
-          left: 20, 
-          right: 20, 
-          top: 15, 
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20
-        ),
-        child: SingleChildScrollView( // Esto evita el RenderFlex overflow
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 20),
-              const Text("Nueva Invitación", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo)),
-              const SizedBox(height: 25),
-              _buildInputLabel("Nombre Completo"),
-              TextField(controller: nameController, decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez")),
-              const SizedBox(height: 20),
-              _buildInputLabel("Correo Electrónico"),
-              TextField(controller: emailController, decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com")),
-              const SizedBox(height: 20),
-              _buildInputLabel("Rol"),
-              DropdownButtonFormField<String>(
-                value: selectedRole,
-                // VOLVEMOS A TU LÓGICA ORIGINAL AQUÍ:
-                items: currentUserRole == 'admin' 
-                  ? [const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor"))]
-                  : [
-                      const DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
-                      const DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
-                      const DropdownMenuItem(value: 'admin', child: Text("Administrador")),
-                    ],
-                onChanged: (val) => selectedRole = val!,
-                decoration: _inputDecoration(Icons.badge_outlined, ""),
+      builder: (context) {
+        // Usamos StatefulBuilder para manejar el cambio de estado solo dentro del modal
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
               ),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo, 
-                  padding: const EdgeInsets.symmetric(vertical: 15), 
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 15,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      "Nueva Invitación",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                    const SizedBox(height: 25),
+                    _buildInputLabel("Nombre Completo"),
+                    TextField(
+                      controller: nameController,
+                      decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez"),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildInputLabel("Correo Electrónico"),
+                    TextField(
+                      controller: emailController,
+                      decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com"),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildInputLabel("Rol"),
+                    DropdownButtonFormField<String>(
+                      value: selectedRole,
+                      // Filtro estricto: Supervisor solo ve 'worker'. Admin/SuperAdmin ven todo.
+                      items: currentUserRole == 'supervisor'
+                          ? const [
+                              DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+                            ]
+                          : const [
+                              DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
+                              DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
+                              DropdownMenuItem(value: 'admin', child: Text("Administrador")),
+                            ],
+                      onChanged: (String? val) {
+                        if (val != null) {
+                          setModalState(() => selectedRole = val);
+                        }
+                      },
+                      decoration: _inputDecoration(Icons.badge_outlined, ""),
+                    ),
+                    const SizedBox(height: 30),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final String name = nameController.text.trim();
+                        final String email = emailController.text.trim();
+
+                        if (name.isEmpty || email.isEmpty) return;
+
+                        final code = await _db.adminCreateUser(
+                          email: email,
+                          name: name,
+                          role: selectedRole,
+                        );
+
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          if (code != "ERROR") {
+                            _showSuccessDialog(context, name, code);
+                          }
+                        }
+                      },
+                      child: const Text(
+                        "ENVIAR INVITACIÓN",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () async {
-                  if (nameController.text.isEmpty || emailController.text.isEmpty) return;
-                  final code = await _db.adminCreateUser(
-                    email: emailController.text.trim(), 
-                    name: nameController.text.trim(), 
-                    role: selectedRole
-                  );
-                  Navigator.pop(context);
-                  if (code != "ERROR") _showSuccessDialog(context, nameController.text.trim(), code);
-                },
-                child: const Text("ENVIAR INVITACIÓN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
-
+    
   void _showSuccessDialog(BuildContext context, String name, String code) {
     showDialog(
       context: context,
@@ -806,13 +858,29 @@ class _AdminDashboardState extends State<AdminDashboard> {
       debugPrint("Error eliminando: $e");
     }
   }
-
-  // --- HELPERS FINALES ---
-
+  
   String _formatDate(dynamic dateData) {
     if (dateData == null) return "SIN FECHA";
-    if (dateData is Timestamp) return DateFormat('dd/MM/yy').format(dateData.toDate());
-    return dateData.toString();
+    
+    // Si es Timestamp de Firebase
+    if (dateData is Timestamp) {
+      return DateFormat('dd/MM/yy').format(dateData.toDate());
+    }
+
+    // Si es un String (ej: "2026-03-27T11:45...")
+    String dateStr = dateData.toString();
+    if (dateStr.contains('T')) {
+      // Intentamos parsearlo para darle el formato dd/MM/yy que ya usas
+      try {
+        DateTime parsed = DateTime.parse(dateStr);
+        return DateFormat('dd/MM/yy').format(parsed);
+      } catch (e) {
+        // Si el parse falla, simplemente cortamos en la T
+        return dateStr.split('T')[0];
+      }
+    }
+
+    return dateStr;
   }
 
   InputDecoration _inputDecoration(IconData icon, String hint) {
