@@ -454,22 +454,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
   }
+  
   void _showAddUserBottomSheet(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController emailController = TextEditingController();
     
     String selectedRole = (currentUserRole == 'supervisor') ? 'worker' : 'supervisor';
-    String? selectedSupervisorId;
+    
+    // CAMBIO AQUÍ: Si es supervisor, asignamos su ID por defecto inmediatamente
+    String? selectedSupervisorId = (currentUserRole == 'supervisor') ? currentUserId : null;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent, // Crucial para los bordes redondeados
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Container(
-              // RECUPERAMOS TU DISEÑO ORIGINAL
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
@@ -485,7 +487,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // La barrita gris de diseño arriba
                     Center(
                       child: Container(
                         width: 40,
@@ -503,7 +504,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                     const SizedBox(height: 25),
 
-                    // Campos de texto que se habían perdido
                     _buildInputLabel("Nombre Completo"),
                     TextField(
                       controller: nameController,
@@ -518,7 +518,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Lógica de Roles
                     _buildInputLabel("Rol"),
                     DropdownButtonFormField<String>(
                       value: selectedRole,
@@ -533,15 +532,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         if (val != null) {
                           setModalState(() {
                             selectedRole = val;
-                            if (selectedRole != 'worker') selectedSupervisorId = null;
+                            // Si cambia el rol y NO es trabajador, limpiamos el supervisor
+                            // EXCEPTO si el que invita es supervisor (siempre será él mismo)
+                            if (selectedRole != 'worker') {
+                              selectedSupervisorId = null;
+                            } else if (currentUserRole == 'supervisor') {
+                              selectedSupervisorId = currentUserId;
+                            }
                           });
                         }
                       },
                       decoration: _inputDecoration(Icons.badge_outlined, ""),
                     ),
 
-                    // Selector de Supervisor (Lógica nueva con diseño consistente)
-                    if (selectedRole == 'worker') ...[
+                    // Selector de Supervisor: SOLO se muestra si el rol es worker 
+                    // Y ADEMÁS el usuario actual NO es ya un supervisor.
+                    if (selectedRole == 'worker' && currentUserRole != 'supervisor') ...[
                       const SizedBox(height: 20),
                       _buildInputLabel("Asignar Supervisor"),
                       StreamBuilder<List<Map<String, dynamic>>>(
@@ -597,7 +603,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           email: email,
                           name: name,
                           role: selectedRole,
-                          supervisorId: selectedSupervisorId,
+                          supervisorId: selectedSupervisorId, // Aquí pasará el ID automático si es supervisor
                         );
 
                         if (context.mounted) {
@@ -619,7 +625,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       },
     );
   }
-    
+  
   void _showSuccessDialog(BuildContext context, String name, String code) {
     showDialog(
       context: context,
