@@ -20,9 +20,9 @@ class DatabaseService {
     String? manualWorkerId,   
     required String name,
     required String clientId,
-    String email = '',      // NUEVO
-    String phone = '',      // NUEVO
-    double amount = 0.0,    // ACTUALIZADO a double
+    String email = '',      
+    String phone = '',      
+    double amount = 0.0,    
     required String contractType,
     required List<String> addresses,
     required String signatureBase64,
@@ -39,9 +39,9 @@ class DatabaseService {
     final Map<String, dynamic> clientData = {
       'name': name,
       'client_id': clientId,
-      'email': email,           // NUEVO
-      'phone': phone,           // NUEVO
-      'monto': amount,          // NUEVO/ACTUALIZADO
+      'email': email,           
+      'phone': phone,           
+      'monto': amount,          
       'contract_type': contractType,
       'addresses': addresses,
       'signature_path': signatureBase64, 
@@ -54,12 +54,10 @@ class DatabaseService {
     }
 
     try {
-      // Usamos el clientId como ID de documento si no viene un ID de edición
       final String docId = (id != null && id.isNotEmpty) ? id : clientId;
       DocumentReference clientRef = _db.collection('clients').doc(docId);
 
       if (id == null || id.isEmpty) {
-        // Lógica para NUEVO CLIENTE
         clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
         clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
         clientData['created_at'] = FieldValue.serverTimestamp();
@@ -67,12 +65,9 @@ class DatabaseService {
         await clientRef.set(clientData);
         _updateTemplateCounter(contractType);
       } else {
-        // Lógica para ACTUALIZAR CLIENTE existente
         await clientRef.update(clientData);
       }
-      
       return; 
-
     } catch (e) {
       debugPrint("Error al guardar cliente: $e");
       rethrow;
@@ -127,6 +122,7 @@ class DatabaseService {
 
   // --- GESTIÓN DE USUARIOS, ROLES E INVITACIONES ---
 
+  /// MODIFICADO: Ahora guarda correctamente el supervisorId asignado en la invitación.
   Future<String> adminCreateUser({
     required String email,
     required String name,
@@ -135,6 +131,7 @@ class DatabaseService {
   }) async {
     try {
       final String currentUid = _auth.currentUser?.uid ?? '';
+      // Generamos código alfanumérico corto para facilitar la entrada al usuario
       final String initialAuthCode = (Random().nextInt(8999) + 1000).toString();
       final DateTime initialExpiry = DateTime.now().add(const Duration(hours: 48)); 
       final String cleanEmail = email.toLowerCase().trim();
@@ -144,7 +141,8 @@ class DatabaseService {
         'name': name,
         'role': role,
         'parent_admin_id': currentUid, 
-        'supervisor_id': currentUid,
+        // Si se pasó un supervisorId (desde el dropdown), se guarda, si no, se usa el del creador
+        'supervisor_id': supervisorId ?? currentUid, 
         'auth_code': initialAuthCode,
         'auth_valid_until': initialExpiry.toIso8601String(),
         'is_validated': false,
@@ -155,6 +153,20 @@ class DatabaseService {
     } catch (e) {
       print("Error en adminCreateUser: $e");
       return "ERROR";
+    }
+  }
+
+  /// NUEVO: Permite cambiar el nombre de un usuario registrado.
+  Future<bool> updateUserName(String userId, String newName) async {
+    try {
+      await _db.collection('users').doc(userId).update({
+        'name': newName,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      print("Error actualizando nombre de usuario: $e");
+      return false;
     }
   }
 
@@ -370,5 +382,35 @@ class DatabaseService {
         .where('title', isEqualTo: title)
         .get(const GetOptions(source: Source.serverAndCache));
     return query.docs.isNotEmpty ? query.docs.first.data() : null;
+  }
+
+  Future<void> updateWorkerName(String workerId, String newName) async {
+    try {
+      await _db.collection('users').doc(workerId).update({
+        'name': newName,
+        'last_updated': FieldValue.serverTimestamp(), // Opcional: para auditoría
+      });
+      print("Nombre actualizado con éxito en Axioma Flow");
+    } catch (e) {
+      print("Error al actualizar el nombre: $e");
+      rethrow; // Para que la UI pueda capturar el error si quieres mostrar un SnackBar
+    }
+  }
+  /// Obtiene un flujo de datos con todos los supervisores activos.
+  Stream<List<Map<String, dynamic>>> getSupervisorsStream() {
+    return _db
+        .collection('users')
+        .where('role', isEqualTo: 'supervisor')
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'uid': doc.id,
+          'name': data['name'] ?? 'Sin nombre',
+          'email': data['email'] ?? '',
+        };
+      }).toList();
+    });
   }
 }

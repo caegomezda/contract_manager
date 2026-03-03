@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously, avoid_print
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contract_manager/main.dart';
 import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart';
@@ -27,7 +27,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   String currentUserRole = '';
   String currentUserId = '';
-  bool _isLoadingRole = true; // NUEVO: Para controlar el parpadeo inicial
+  bool _isLoadingRole = true;
+  
+  // ignore: strict_top_level_inference
+  get worker => null; // NUEVO: Para controlar el parpadeo inicial
 
   @override
   void initState() {
@@ -90,8 +93,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   // --- COMPONENTES DE UI ---
+  Widget _buildSliverAppBar(BuildContext context) { 
+    // Definimos quién puede ver las plantillas
+    final bool canManageTemplates = currentUserRole == 'admin' || currentUserRole == 'super_admin';
 
-  Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
       expandedHeight: 140.0,
       pinned: true,
@@ -117,14 +122,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  Expanded(
-                    child: _topMenuButton(
-                      context, 
-                      Icons.description_rounded, 
-                      "Plantillas",
-                      () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractDashboard())),
+                  // --- FILTRO DE PLANTILLAS ---
+                  if (canManageTemplates)
+                    Expanded(
+                      child: _topMenuButton(
+                        context, 
+                        Icons.description_rounded, 
+                        "Plantillas",
+                        () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractDashboard())),
+                      ),
                     ),
-                  ),
+                  
                   Expanded(
                     child: _topMenuButton(
                       context, 
@@ -133,6 +141,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserDashboard())),
                     ),
                   ),
+                  
                   Expanded(
                     child: _topMenuButton(
                       context, 
@@ -149,7 +158,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
   }
-
   Widget _topMenuButton(BuildContext context, IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -295,16 +303,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _workerCard(BuildContext context, Map<String, dynamic> worker) {
+    // 1. Lógica de Roles y Privilegios
     final String role = (worker['role'] ?? 'worker').toString().toLowerCase();
-    
-    // ESTA ES LA VARIABLE DE LA DISCORDIA
-    // La declaramos porque la necesitamos para la opción de copiar.
     final String? accessCode = worker['auth_code']?.toString();
-    
+    final String workerName = worker['name'] ?? 'Usuario';
     final bool isPrivileged = role == 'admin' || role == 'super_admin';
     final bool isValidated = worker['is_validated'] ?? false;
     final dynamic rawExpiry = worker['auth_valid_until'];
     
+    // 2. Lógica de Expiración de Acceso
     DateTime? expiryDate;
     if (rawExpiry is Timestamp) {
       expiryDate = rawExpiry.toDate();
@@ -312,14 +319,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
       expiryDate = DateTime.tryParse(rawExpiry);
     }
 
-    final bool isExpired = !isPrivileged && (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
+    final bool isExpired = !isPrivileged && 
+        (!isValidated || (expiryDate != null && DateTime.now().isAfter(expiryDate)));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white, 
         borderRadius: BorderRadius.circular(20), 
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02), 
+            blurRadius: 10, 
+            offset: const Offset(0, 4)
+          )
+        ]
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -335,10 +349,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ),
         title: Text(
-          worker['name'] ?? 'Usuario', 
+          workerName, 
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
           maxLines: 1,
-          overflow: TextOverflow.ellipsis, // Solución para el overflow
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -351,12 +365,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
           ],
         ),
-        trailing: PopupMenuButton<String>(
+      trailing: PopupMenuButton<String>(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           icon: const Icon(Icons.more_vert_rounded),
-          onSelected: (val) => _handleMenuAction(context, val, worker),
-          itemBuilder: (context) {
-            bool canManage = currentUserRole != 'supervisor';
+          
+          // CAPTURA DIRECTA: Forzamos a que el valor de 'worker' se guarde en esta clausura
+          onSelected: (String val) {
+            // Creamos una copia local inmediata para asegurarnos de que no sea null
+            // final Map<String, dynamic> selectedWorker = Map.from(worker); 
+            // print("Seleccionado: ${selectedWorker['name']} para acción: $val"); // Debug
+            // _handleMenuAction(context, val, selectedWorker);
+
+            print("LOG PRE-HANDLER: Enviando a $val el worker ${worker['name']}");
+            _handleMenuAction(context, val, worker);
+          },
+          
+          itemBuilder: (BuildContext context) {
+            // Usamos el rol que ya calculaste al inicio de _workerCard
+            bool canManage = currentUserRole == 'admin' || currentUserRole == 'super_admin';
+            
             return [
               const PopupMenuItem(
                 value: 'view', 
@@ -369,6 +396,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
               if (canManage) ...[
                 const PopupMenuItem(
+                  value: 'edit_name', 
+                  child: ListTile(
+                    leading: Icon(Icons.edit_outlined, color: Colors.teal), 
+                    title: Text("Editar Nombre", style: TextStyle(fontSize: 14)), 
+                    contentPadding: EdgeInsets.zero, 
+                    visualDensity: VisualDensity.compact
+                  )
+                ),
+                const PopupMenuItem(
                   value: 'change_role', 
                   child: ListTile(
                     leading: Icon(Icons.manage_accounts_outlined, color: Colors.deepPurple), 
@@ -378,6 +414,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   )
                 ),
                 
+                // Usamos la variable local 'accessCode' que ya definiste arriba en la card
                 if (!isPrivileged && accessCode != null && accessCode.isNotEmpty)
                   const PopupMenuItem(
                     value: 'copy_code', 
@@ -400,7 +437,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     )
                   ),
                 
-                // Opción de eliminar para Super Admin
                 if (currentUserRole == 'super_admin')
                   const PopupMenuItem(
                     value: 'delete', 
@@ -418,23 +454,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
   }
-
   void _showAddUserBottomSheet(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController emailController = TextEditingController();
     
-    // Determinamos el valor inicial basándonos estrictamente en el rol del usuario actual
     String selectedRole = (currentUserRole == 'supervisor') ? 'worker' : 'supervisor';
+    String? selectedSupervisorId;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.transparent, // Crucial para los bordes redondeados
       builder: (context) {
-        // Usamos StatefulBuilder para manejar el cambio de estado solo dentro del modal
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Container(
+              // RECUPERAMOS TU DISEÑO ORIGINAL
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
@@ -450,6 +485,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // La barrita gris de diseño arriba
                     Center(
                       child: Container(
                         width: 40,
@@ -463,33 +499,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     const SizedBox(height: 20),
                     const Text(
                       "Nueva Invitación",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.indigo,
-                      ),
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo),
                     ),
                     const SizedBox(height: 25),
+
+                    // Campos de texto que se habían perdido
                     _buildInputLabel("Nombre Completo"),
                     TextField(
                       controller: nameController,
                       decoration: _inputDecoration(Icons.person_outline, "Ej: Juan Pérez"),
                     ),
                     const SizedBox(height: 20),
+                    
                     _buildInputLabel("Correo Electrónico"),
                     TextField(
                       controller: emailController,
                       decoration: _inputDecoration(Icons.email_outlined, "correo@ejemplo.com"),
                     ),
                     const SizedBox(height: 20),
+
+                    // Lógica de Roles
                     _buildInputLabel("Rol"),
                     DropdownButtonFormField<String>(
                       value: selectedRole,
-                      // Filtro estricto: Supervisor solo ve 'worker'. Admin/SuperAdmin ven todo.
                       items: currentUserRole == 'supervisor'
-                          ? const [
-                              DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
-                            ]
+                          ? const [DropdownMenuItem(value: 'worker', child: Text("Trabajador"))]
                           : const [
                               DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
                               DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
@@ -497,45 +531,83 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             ],
                       onChanged: (String? val) {
                         if (val != null) {
-                          setModalState(() => selectedRole = val);
+                          setModalState(() {
+                            selectedRole = val;
+                            if (selectedRole != 'worker') selectedSupervisorId = null;
+                          });
                         }
                       },
                       decoration: _inputDecoration(Icons.badge_outlined, ""),
                     ),
+
+                    // Selector de Supervisor (Lógica nueva con diseño consistente)
+                    if (selectedRole == 'worker') ...[
+                      const SizedBox(height: 20),
+                      _buildInputLabel("Asignar Supervisor"),
+                      StreamBuilder<List<Map<String, dynamic>>>(
+                        stream: _db.getSupervisorsStream(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) return const LinearProgressIndicator();
+                          
+                          return DropdownButtonFormField<String>(
+                            value: selectedSupervisorId,
+                            hint: const Text("Seleccione un supervisor"),
+                            items: snapshot.data!.map((sup) => DropdownMenuItem(
+                              value: sup['uid'] as String,
+                              child: Text(sup['name'] as String),
+                            )).toList(),
+                            onChanged: (val) => setModalState(() => selectedSupervisorId = val),
+                            decoration: _inputDecoration(Icons.assignment_ind_outlined, ""),
+                          );
+                        },
+                      ),
+                    ],
+
                     const SizedBox(height: 30),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.indigo,
                         padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       ),
                       onPressed: () async {
                         final String name = nameController.text.trim();
                         final String email = emailController.text.trim();
 
                         if (name.isEmpty || email.isEmpty) return;
+                        
+                        if (selectedRole == 'worker' && selectedSupervisorId == null) {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("Falta Información"),
+                              content: const Text("Un trabajador DEBE tener un supervisor asignado."),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx), 
+                                  child: const Text("ENTENDIDO")
+                                )
+                              ],
+                            ),
+                          );
+                          return;
+                        }
 
                         final code = await _db.adminCreateUser(
                           email: email,
                           name: name,
                           role: selectedRole,
+                          supervisorId: selectedSupervisorId,
                         );
 
                         if (context.mounted) {
                           Navigator.pop(context);
-                          if (code != "ERROR") {
-                            _showSuccessDialog(context, name, code);
-                          }
+                          if (code != "ERROR") _showSuccessDialog(context, name, code);
                         }
                       },
                       child: const Text(
-                        "ENVIAR INVITACIÓN",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        "ENVIAR INVITACIÓN", 
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
                       ),
                     ),
                   ],
@@ -584,7 +656,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
           DropdownMenuItem(value: 'worker', child: Text("Trabajador")),
           DropdownMenuItem(value: 'supervisor', child: Text("Supervisor")),
           DropdownMenuItem(value: 'admin', child: Text("Administrador")),
-          DropdownMenuItem(value: 'super_admin', child: Text("Super Administrador")),
         ];
       } else {
         menuItems = const [
@@ -858,7 +929,50 @@ class _AdminDashboardState extends State<AdminDashboard> {
       debugPrint("Error eliminando: $e");
     }
   }
-  
+
+  void _showEditNameDialog(BuildContext context, Map<String, dynamic> worker) {
+      final String currentName = worker['name']?.toString() ?? '';
+      final TextEditingController nameController = TextEditingController(text: currentName);
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Editar Nombre"),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: "Nombre completo"),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+            ElevatedButton(
+              onPressed: () async {
+                final String nuevoNombre = nameController.text.trim();
+                final String? workerId = worker['id']?.toString() ?? worker['uid']?.toString();
+
+                if (nuevoNombre.isNotEmpty && workerId != null) {
+                  try {
+                    // Cambia '_db' por tu instancia de DataService
+                    await _db.updateWorkerName(workerId, nuevoNombre);
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Nombre actualizado"), backgroundColor: Colors.green)
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red)
+                    );
+                  }
+                }
+              },
+              child: const Text("Guardar"),
+            ),
+          ],
+        ),
+      );
+    }
+    
   String _formatDate(dynamic dateData) {
     if (dateData == null) return "SIN FECHA";
     
@@ -904,7 +1018,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _handleMenuAction(BuildContext context, String action, Map<String, dynamic> user) {
+
+    print("DEBUG HANDLER: Recibida acción '$action' para el worker: ${user['name']}");
+
     switch (action) {
+      case 'edit_name':
+      _showEditNameDialog(context, user);
+      break;
       case 'view':
         Navigator.push(context, MaterialPageRoute(builder: (context) => WorkerClientsScreen(workerName: user['name'] ?? '', workerId: user['uid'])));
         break;
