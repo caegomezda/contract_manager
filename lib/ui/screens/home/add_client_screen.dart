@@ -382,7 +382,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
         title: const Text("El cliente acepta los términos y condiciones", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         subtitle: InkWell(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen())),
-          child: const Text("Leer contrato legal completo", style: TextStyle(color: Colors.indigo, decoration: TextDecoration.underline, fontSize: 12)),
+          child: const Text("Ver Términos y condiciones", style: TextStyle(color: Colors.indigo, decoration: TextDecoration.underline, fontSize: 12)),
         ),
         controlAffinity: ListTileControlAffinity.leading,
         activeColor: Colors.indigo,
