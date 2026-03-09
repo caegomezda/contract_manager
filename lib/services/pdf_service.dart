@@ -7,17 +7,20 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PdfService {
   // --- GENERADOR DE BYTES ---
   static Future<Uint8List> _generatePdfBytes(Map<String, dynamic> clientData, String termsBody) async {
     final pdf = pw.Document();
 
+    // --- BLOQUE DE DIAGNÓSTICO ---
+    debugPrint("!!! DATOS RECIBIDOS EN PDF SERVICE: ${clientData.keys.toList()}");
+
     // Cargamos fuentes locales
     final fontData = await rootBundle.load("assets/fonts/Roboto-Regular.ttf");
     final font = pw.Font.ttf(fontData);
     
-    // Intentamos cargar Bold, si no está usamos la misma Regular para evitar errores de compilación
     pw.Font fontBold;
     try {
       final fontBoldData = await rootBundle.load("assets/fonts/Roboto-Bold.ttf");
@@ -31,16 +34,42 @@ class PdfService {
         .replaceAll('\r', '') 
         .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'), ''); 
 
-    // CORRECCIÓN AQUÍ: Forzamos .toString() en cada reemplazo para evitar el error de subtype 'double'
+    // --- LÓGICA DE FECHA REFORZADA ---
+    String contractDate = "";
+    String todayStr = DateTime.now().toString().split(' ')[0]; // Para limpiar fechas manuales
+    
+    try {
+      var rawDate = clientData['updated_at'] ?? 
+                    clientData['created_at'] ?? 
+                    clientData['fecha'];
+      
+      if (rawDate != null) {
+        if (rawDate is Timestamp) {
+          DateTime dt = rawDate.toDate();
+          contractDate = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+        } else {
+          contractDate = rawDate.toString().split(' ')[0];
+        }
+      } else {
+        contractDate = todayStr;
+      }
+    } catch (e) {
+      debugPrint("!!! Error en fecha: $e");
+      contractDate = todayStr;
+    }
+
+    // 2. PROCESAMIENTO DE TEXTO (CORRECCIÓN DEFINITIVA)
     String processedBody = cleanBody
         .replaceAll('{{nombre}}', (clientData['name'] ?? 'N/A').toString())
         .replaceAll('{{id}}', (clientData['client_id'] ?? 'N/A').toString())
         .replaceAll('{{contrato}}', (clientData['contract_type'] ?? 'N/A').toString())
-        .replaceAll('{{direcciones}}', (clientData['address'] ?? 'N/A').toString())
+        .replaceAll('{{direcciones}}', (clientData['addresses'] ?? clientData['address'] ?? 'N/A').toString())
         .replaceAll('{{monto}}', (clientData['monto'] ?? '0.00').toString()) 
-        .replaceAll('{{fecha}}', DateTime.now().toString().split(' ')[0]);
+        .replaceAll('{{fecha}}', contractDate)
+        // Esta línea es la clave: busca cualquier fecha de "hoy" escrita manualmente y la cambia por la real
+        .replaceAll(todayStr, contractDate);
 
-    // 2. DECODIFICAR FIRMA
+    // 3. DECODIFICAR FIRMA
     Uint8List? signatureBytes;
     if (clientData['signature_path'] != null && clientData['signature_path'].toString().isNotEmpty) {
       try {
@@ -66,7 +95,7 @@ class PdfService {
               children: [
                 pw.Text("CONTRACTFLOW SYSTEM", 
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.indigo, fontSize: 12)),
-                pw.Text("ID DOC: ${DateTime.now().millisecondsSinceEpoch}", 
+                pw.Text("FECHA EMISIÓN: $contractDate", 
                   style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
               ],
             ),
@@ -101,7 +130,12 @@ class PdfService {
                     ]
                   ),
                   pw.SizedBox(height: 5),
-                  _buildInfoField("Sedes/Dirección", (clientData['address'] ?? 'No especificada').toString()),
+                  pw.Row(
+                    children: [
+                       pw.Expanded(child: _buildInfoField("Fecha de Contrato", contractDate)),
+                       pw.Expanded(child: _buildInfoField("Sedes/Dirección", (clientData['addresses'] ?? clientData['address'] ?? 'No especificada').toString())),
+                    ]
+                  ),
                 ],
               ),
             ),
@@ -176,7 +210,7 @@ class PdfService {
             ),
             pw.SizedBox(height: 20),
             pw.Center(
-              child: pw.Text("Documento generado electrónicamente. No requiere firma física para su validez legal.",
+              child: pw.Text("Documento generado electrónicamente el $contractDate. No requiere firma física para su validez legal.",
                 style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
             )
           ];
