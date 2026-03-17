@@ -5,6 +5,7 @@ import 'package:contract_manager/ui/screens/admin/admin_contract_dashboard.dart'
 import 'package:contract_manager/services/database_service.dart';
 import 'package:contract_manager/ui/screens/home/pending_invitations_page.dart';
 import 'package:contract_manager/ui/screens/home/user_dashboard.dart';
+import 'package:contract_manager/ui/screens/home/worker_management_view.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -132,6 +133,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminContractDashboard())),
                       ),
                     ),
+          
+                  Expanded(
+                    child: _topMenuButton(
+                      context, 
+                      Icons.badge_rounded, // Icono de personal
+                      "Personal",
+                      () => _navigateToHierarchy(context),
+                    ),
+                  ),
                   
                   Expanded(
                     child: _topMenuButton(
@@ -455,6 +465,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
   
+  void _navigateToHierarchy(BuildContext context) {
+  // Si es supervisor, va directo a sus trabajadores
+    if (currentUserRole == 'supervisor') {
+      Navigator.push(
+        context, 
+        MaterialPageRoute(
+          builder: (context) => WorkerListView(
+            supervisorId: currentUserId, 
+            supervisorName: "Mi Equipo"
+          )
+        )
+      );
+    } else {
+      // Si es Admin/SuperAdmin, va a la lista de Supervisores primero
+      Navigator.push(
+        context, 
+        MaterialPageRoute(builder: (context) => const SupervisorListView())
+      );
+    }
+  }
+
   void _showAddUserBottomSheet(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController emailController = TextEditingController();

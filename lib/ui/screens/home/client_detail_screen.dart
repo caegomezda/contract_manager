@@ -8,9 +8,6 @@ import '../../../services/database_service.dart';
 import 'client_form_screen.dart';
 
 /// Pantalla de detalle que muestra la información consolidada de un cliente.
-/// 
-/// Permite la edición, previsualización de documentos legales y descarga de 
-/// contratos procesando dinámicamente las plantillas de Firebase.
 class ClientDetailScreen extends StatefulWidget {
   final Map<String, dynamic> client;
   final bool isAdmin;
@@ -24,15 +21,51 @@ class ClientDetailScreen extends StatefulWidget {
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
   bool _isGenerating = false;
 
-  /// Obtiene la plantilla de Firebase y reemplaza los marcadores {{...}} con datos reales.
-  /// Se han agregado las nuevas variables dinámicas: correo, teléfono y monto.
+  /// Método para mostrar la imagen en pantalla completa con soporte de Zoom
+  void _showFullScreenImage(BuildContext context, String base64Image) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // InteractiveViewer permite hacer zoom y desplazar la imagen
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.memory(
+                base64Decode(base64Image),
+                fit: BoxFit.contain,
+                width: MediaQuery.of(context).size.width,
+                height: MediaQuery.of(context).size.height,
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: CircleAvatar(
+                backgroundColor: Colors.black54,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<String> _getProcessedTerms() async {
     String contractTitle = widget.client['contract_type'] ?? 'Servicio Técnico';
     final templateData = await DatabaseService().getTemplateByTitle(contractTitle);
     
     String termsBody = templateData?['body'] ?? "Contrato de prestación de servicios para {{nombre}}.";
 
-    // CORRECCIÓN: Se asegura que cada valor sea String antes de hacer el replaceAll
     return termsBody
         .replaceAll('{{nombre}}', (widget.client['name'] ?? '').toString())
         .replaceAll('{{id}}', (widget.client['client_id'] ?? '').toString())
@@ -43,7 +76,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         .replaceAll('{{direcciones}}', (widget.client['addresses'] as List?)?.join(", ") ?? '');
   }
 
-  /// Genera y abre el visor de PDF integrado.
   Future<void> _processAndPreviewPDF(BuildContext context) async {
     setState(() => _isGenerating = true);
     try {
@@ -56,7 +88,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     }
   }
 
-  /// Procesa el texto y dispara la descarga del archivo al dispositivo.
   Future<void> _processAndDownloadPDF(BuildContext context) async {
     setState(() => _isGenerating = true);
     try {
@@ -177,13 +208,12 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: () {
-          // Se mapean los nuevos campos al modelo para la edición
           final clientModel = ClientModel(
             id: widget.client['id'],
             name: widget.client['name'] ?? '',
             clientId: widget.client['client_id'] ?? '',
-            email: widget.client['email'] ?? '', // Nuevo
-            phone: widget.client['phone'] ?? '', // Nuevo
+            email: widget.client['email'] ?? '', 
+            phone: widget.client['phone'] ?? '', 
             monto: (widget.client['monto'] is num) ? (widget.client['monto'] as num).toDouble() : 0.0,
             contractType: widget.client['contract_type'] ?? '',
             workerId: widget.client['worker_id'],
@@ -211,22 +241,41 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Registro Fotográfico", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("Registro Fotográfico", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            if (photoBase64 != null && photoBase64.isNotEmpty)
+              const Text("Toca para ampliar", style: TextStyle(fontSize: 11, color: Colors.blueAccent)),
+          ],
+        ),
         const SizedBox(height: 10),
-        Container(
-          height: 220,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.grey[200]!),
+        GestureDetector(
+          onTap: (photoBase64 != null && photoBase64.isNotEmpty) 
+              ? () => _showFullScreenImage(context, photoBase64)
+              : null,
+          child: Container(
+            height: 220,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.grey[200]!),
+              boxShadow: [
+                if (photoBase64 != null && photoBase64.isNotEmpty)
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
+              ]
+            ),
+            child: photoBase64 != null && photoBase64.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Hero(
+                      tag: 'client_photo', // Animación fluida al abrir
+                      child: Image.memory(base64Decode(photoBase64), fit: BoxFit.cover),
+                    ),
+                  )
+                : const Icon(Icons.image_not_supported_outlined, size: 40, color: Colors.grey),
           ),
-          child: photoBase64 != null && photoBase64.isNotEmpty
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(13),
-                  child: Image.memory(base64Decode(photoBase64), fit: BoxFit.cover),
-                )
-              : const Icon(Icons.image_not_supported_outlined, size: 40, color: Colors.grey),
         ),
       ],
     );
