@@ -54,8 +54,15 @@ class DatabaseService {
     }
 
     try {
-      final String docId = (id != null && id.isNotEmpty) ? id : clientId;
-      DocumentReference clientRef = _db.collection('clients').doc(docId);
+      DocumentReference clientRef;
+      if (id != null && id.isNotEmpty) {
+        // Si viene un ID, estamos editando un documento existente
+        clientRef = _db.collection('clients').doc(id);
+      } else {
+        // Si NO viene un ID, creamos uno nuevo con ID automático de Firestore
+        // Esto evita que se sobrescriban clientes con la misma identificación
+        clientRef = _db.collection('clients').doc(); 
+      }
 
       if (id == null || id.isEmpty) {
         clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
