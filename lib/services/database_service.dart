@@ -14,6 +14,8 @@ class DatabaseService {
   // --- GESTIÓN DE CLIENTES (FIRMAS Y CONTRATOS) ---
 
   /// Guarda o actualiza un cliente con soporte para nuevos campos: correo, teléfono y monto.
+  /// Guarda o actualiza un cliente con soporte para nuevos campos.
+  /// Optimizado para evitar sobrescrituras accidentales de contratos.
   Future<void> saveClient({
     String? id,
     String? manualWorkerName, 
@@ -36,6 +38,7 @@ class DatabaseService {
       photoBase64 = await _processPhotoToBase64(photoFile);
     }
 
+    // Datos que se actualizan siempre (Edición o Creación)
     final Map<String, dynamic> clientData = {
       'name': name,
       'client_id': clientId,
@@ -55,32 +58,32 @@ class DatabaseService {
 
     try {
       DocumentReference clientRef;
-      if (id != null && id.isNotEmpty) {
-        // Si viene un ID, estamos editando un documento existente
-        clientRef = _db.collection('clients').doc(id);
-      } else {
-        // Si NO viene un ID, creamos uno nuevo con ID automático de Firestore
-        // Esto evita que se sobrescriban clientes con la misma identificación
-        clientRef = _db.collection('clients').doc(); 
-      }
-
+      
+      // LOGICA DE SEGURIDAD: 
+      // Si el ID de Firebase es nulo o vacío, FORZAMOS un nuevo documento.
       if (id == null || id.isEmpty) {
-        clientData['worker_id'] = manualWorkerId ?? currentUser?.uid;
-        clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
+        clientRef = _db.collection('clients').doc(); // Genera ID aleatorio único
+        
+        // Datos que SOLO se graban al CREAR el contrato
         clientData['created_at'] = FieldValue.serverTimestamp();
+        clientData['worker_id'] = manualWorkerId ?? currentUser?.uid ?? 'unknown_worker';
+        clientData['worker_name'] = manualWorkerName ?? (currentUser?.displayName ?? 'Operario');
 
         await clientRef.set(clientData);
         _updateTemplateCounter(contractType);
       } else {
+        // Si hay un ID, es una edición de un contrato existente
+        clientRef = _db.collection('clients').doc(id);
+        
+        // Usamos update para no borrar campos que no estemos enviando en este mapa
         await clientRef.update(clientData);
       }
-      return; 
     } catch (e) {
-      debugPrint("Error al guardar cliente: $e");
+      debugPrint("Error al guardar cliente en Firestore: $e");
       rethrow;
     }
   }
-
+  
   void _updateTemplateCounter(String contractType) async {
     try {
       final templateQuery = await _db.collection('templates')
